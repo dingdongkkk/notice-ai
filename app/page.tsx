@@ -7,6 +7,7 @@ import {
   buildIcs,
   checkRelevance,
   compareNotices,
+  eventTitle,
   formatWhen,
   planUpdates,
   saveReminder,
@@ -56,6 +57,7 @@ type Tone = "ok" | "warn" | "bad";
 type Tint = "blue" | "green" | "amber" | "violet" | "pink";
 
 const NO_REMINDERS: SavedReminder[] = [];
+const NO_EVENTS: Record<string, string> = {};
 const SCALES = [
   { value: 1, label: "A", name: "Normal text" },
   { value: 1.2, label: "A+", name: "Large text" },
@@ -768,6 +770,7 @@ function Flow({
   setProfile,
   reminders,
   setReminders,
+  google,
 }: {
   thread: Thread;
   result: Result;
@@ -775,6 +778,7 @@ function Flow({
   setProfile: (p: Profile) => void;
   reminders: SavedReminder[];
   setReminders: (r: SavedReminder[]) => void;
+  google: boolean;
 }) {
   const t = useT();
   const n = result.notice;
@@ -789,6 +793,8 @@ function Flow({
   const [doneSuggested, setDoneSuggested] = useState<string[]>([]);
   const [have, setHave] = useState<string[]>([]);
   const [shared, setShared] = useState(false);
+  // The Google Calendar event made for each notice, so a correction updates it.
+  const [events, setEvents] = useStored<Record<string, string>>("nta.gcal", NO_EVENTS);
 
   const confirmed: ConfirmedEvent | null =
     checked && isIsoDate(date)
@@ -850,6 +856,57 @@ function Flow({
             )
           : t("This reminder was already saved, so nothing new was added. The calendar file was downloaded again."),
     );
+  }
+
+  // Adds the confirmed reminder to the person's Google Calendar. Google asks
+  // for permission in a small window, which reports back when it is done.
+  async function addToGoogle() {
+    if (!confirmed) return;
+    const popup = window.open("", "nta-calendar", "width=520,height=700");
+    if (!popup) {
+      setStatus(t("Allow pop-ups for this site, then try again."));
+      return;
+    }
+    const failed = "Google Calendar could not be reached. Use the calendar file instead.";
+    const out = saveReminder(reminders, thread.id, n, confirmed);
+    if (out.status !== "unchanged") setReminders(out.list);
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...confirmed,
+          title: eventTitle(n),
+          description: [n.explanation, ...n.requirements.map((r) => `- ${r}`)].join("\n"),
+          location: n.officeLocation ?? n.affectedAreas.join(", "),
+          eventId: events[thread.id] ?? null,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || typeof body?.url !== "string") throw new Error("start");
+      popup.location.href = body.url;
+    } catch {
+      popup.close();
+      setStatus(t(failed));
+      return;
+    }
+    const channel = new BroadcastChannel("nta-calendar");
+    channel.onmessage = (e) => {
+      if (e.data?.type !== "nta-calendar") return;
+      channel.close();
+      if (e.data.ok && typeof e.data.eventId === "string") {
+        setEvents({ ...events, [thread.id]: e.data.eventId });
+        setStatus(
+          t(
+            e.data.updated
+              ? "Updated in your Google Calendar."
+              : "Added to your Google Calendar. It will remind you 12 hours before.",
+          ),
+        );
+      } else {
+        setStatus(t(failed));
+      }
+    };
   }
 
   async function copyCard() {
@@ -1085,6 +1142,12 @@ function Flow({
               <Icon name="calendar" />
               {saved ? t("Approve and update reminder") : t("Approve and download reminder")}
             </button>
+            {google && (
+              <button className="wide ghost" onClick={addToGoogle} disabled={!confirmed}>
+                <Icon name="calendar" />
+                {t(events[thread.id] ? "Update in Google Calendar" : "Add to Google Calendar")}
+              </button>
+            )}
             <p className="muted">{t("The reminder rings 12 hours before.")}</p>
           </Section>
 
@@ -1244,7 +1307,7 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const busy = pending !== null;
   const t = translator(language);
-  const { user, refresh } = useSession();
+  const { user, google, refresh } = useSession();
   // Bumped whenever the saved notices change, so the lists reload.
   const [saves, setSaves] = useState(0);
 
@@ -1557,6 +1620,7 @@ export default function Home() {
               setProfile={setProfile}
               reminders={reminders}
               setReminders={setReminders}
+              google={google}
             />
 
             <SaveCard

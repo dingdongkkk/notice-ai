@@ -24,13 +24,18 @@ async function api(path: string, method = "GET", body?: unknown) {
 // Who is signed in. `undefined` while it is still being checked.
 export function useSession() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
+  // Whether this server can use Google (sign-in and Calendar).
+  const [google, setGoogle] = useState(false);
   const refresh = useCallback(() => {
     api("/api/auth")
-      .then((d) => setUser(d.user))
+      .then((d) => {
+        setUser(d.user);
+        setGoogle(d.google === true);
+      })
       .catch(() => setUser(null));
   }, []);
   useEffect(refresh, [refresh]);
-  return { user, refresh };
+  return { user, google, refresh };
 }
 
 export function AccountBar({ user, onChange }: { user: User | null | undefined; onChange: () => void }) {

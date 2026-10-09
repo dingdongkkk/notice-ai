@@ -9,6 +9,7 @@ Photograph an official document in Kannada or English and the app turns it into 
 3. **Checks whether it affects your family.** An optional household profile (locality, water provider, student, senior citizen) is compared with the notice. The answer is one of *Matches the stated conditions*, *Doesn't match a stated condition* or *Need more information*, with the reason for each.
 4. **Gets you ready for a visit.** Required documents become a tick list that counts what is still missing; the office named in the notice is shown, and any office from an outside source is marked as a candidate with "confirm before travelling".
 5. **Sets a reminder only after you approve.** You confirm the date against the notice, then download a calendar file. An unreadable date blocks the reminder until you type it in.
+   With Google configured, the same confirmed reminder can instead be added straight to your Google Calendar, with a 12-hour-before alert. Google asks for permission in a small window each time; the app writes the one event and keeps no Google tokens. A corrected notice updates that event instead of adding another.
 6. **Makes a card for the family.** A large-text card (what happened, when, what to do) that separates the notice's own instructions from suggested precautions, hides personal details by default, and is shared through the phone's share sheet.
 7. **Handles a corrected notice.** Upload the newer version and the app says what changed in plain sentences ("The date moved later by 2 days"), counts the updates your plan needs, and updates the saved reminder instead of adding a second one.
 8. **Answers follow-up questions** from the facts already read from the notice.
@@ -104,6 +105,8 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ```
 
+For "Add to Google Calendar", also enable the **Google Calendar API** for the same project (APIs & Services → Library) and add the scope `https://www.googleapis.com/auth/calendar.events` to the consent screen. It uses the same redirect URI.
+
 While the OAuth consent screen is in "Testing" mode, only the test users you list in the console can sign in.
 
 "Try an example" loads a hand-written water-cut notice (with a corrected version), scholarship notice, government circular or legal notice. Samples are labelled on screen and never pass through the model.
@@ -125,6 +128,7 @@ While the OAuth consent screen is in "Testing" mode, only the test users you lis
 | `app/api/library/route.ts` | Library size, and answers to general questions from it |
 | `app/api/highlight/route.ts` | Asks the model where the important parts are on the photo |
 | `app/highlights.ts` | Combines the two halves and fits each mark to the printed line |
+| `app/api/calendar/route.ts`, `lib/calendar.ts` | Adds or updates a reminder in Google Calendar |
 | `lib/db.ts`, `lib/auth.ts` | The SQLite database (built into Node) and accounts |
 | `lib/retrieve.ts` | Embeddings, ranking, saved notices and the shared library |
 | `app/account.tsx`, `app/login/page.tsx` | Sign-in page and the saved-notice, related-notice and question components |
@@ -149,6 +153,7 @@ Key dependencies: Next.js, React, Zod.
 - The model host is rate limited and can be busy; the app shows a message and does not retry by itself.
 - Live testing so far is two synthetic water-cut notices; see "What has been tested live". This is not an official government service and gives no legal advice.
 
+- Adding to Google Calendar has not been run against Google either: only its start, its validation and its rejection of a bad return were tested. The event ID is remembered in the browser, so a correction made on another device adds a new event.
 - Google sign-in has not been run against Google: no OAuth client was available when it was written. Only its start redirect and its rejection of a bad return were tested.
 - Accounts are basic: there is no email, password reset or account deletion screen, and the sign-in lockout is held in memory. The database is one local file, so this build suits a single server and would lose its data on a host with no persistent disk.
 - Highlights were measured on one computer-drawn English notice: all eleven marks covered the intended words and sat within a few pixels of the printed line. They have not been checked on a real photograph or on Kannada print, where shadows, skew and vowel signs above and below the line may make the pixel fitting less reliable. Which phrases get marked is the model's choice and can be wrong.

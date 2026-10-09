@@ -336,6 +336,12 @@ const UI: Record<string, [string, string]> = {
   "or": ["ಅಥವಾ", "या"],
   "Google sign-in did not complete. Please try again.": ["Google ಸೈನ್ ಇನ್ ಪೂರ್ಣವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.", "Google साइन इन पूरा नहीं हुआ. कृपया फिर कोशिश करें."],
   "Google sign-in is not set up on this server.": ["ಈ ಸರ್ವರ್‌ನಲ್ಲಿ Google ಸೈನ್ ಇನ್ ಸಿದ್ಧಪಡಿಸಿಲ್ಲ.", "इस सर्वर पर Google साइन इन सेट नहीं है."],
+  "Add to Google Calendar": ["Google Calendar ಗೆ ಸೇರಿಸಿ", "Google Calendar में जोड़ें"],
+  "Update in Google Calendar": ["Google Calendar ನಲ್ಲಿ ಬದಲಿಸಿ", "Google Calendar में बदलें"],
+  "Added to your Google Calendar. It will remind you 12 hours before.": ["ನಿಮ್ಮ Google Calendar ಗೆ ಸೇರಿಸಲಾಗಿದೆ. ಇದು 12 ಗಂಟೆ ಮೊದಲು ನೆನಪಿಸುತ್ತದೆ.", "आपके Google Calendar में जोड़ दिया गया. यह 12 घंटे पहले याद दिलाएगा."],
+  "Updated in your Google Calendar.": ["ನಿಮ್ಮ Google Calendar ನಲ್ಲಿ ಬದಲಿಸಲಾಗಿದೆ.", "आपके Google Calendar में बदल दिया गया."],
+  "Google Calendar could not be reached. Use the calendar file instead.": ["Google Calendar ತಲುಪಲು ಆಗಲಿಲ್ಲ. ಬದಲಿಗೆ ಕ್ಯಾಲೆಂಡರ್ ಫೈಲ್ ಬಳಸಿ.", "Google Calendar तक नहीं पहुँच सके. इसकी जगह कैलेंडर फ़ाइल इस्तेमाल करें."],
+  "Allow pop-ups for this site, then try again.": ["ಈ ಸೈಟ್‌ಗೆ ಪಾಪ್-ಅಪ್‌ಗಳನ್ನು ಅನುಮತಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.", "इस साइट के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें."],
 };
 
 export type T = (text: string, vars?: Record<string, string | number>) => string;
