@@ -1,0 +1,84 @@
+[
+  {
+    "hash": "53a80009595249222cabfa271c14683a94cd32fae6a330e7f0b580bd1f226da4",
+    "language": "en",
+    "model": "gemma-4-26b-a4b-it",
+    "holdSeconds": 10,
+    "notice": {
+      "category": "legal",
+      "documentType": "Legal Notice",
+      "issuer": "R. K. Sharma, Advocate",
+      "title": "Notice for vacating the premises and payment of outstanding dues",
+      "headline": "A legal notice has been sent demanding unpaid rent and the vacation of a property.",
+      "referenceNumber": null,
+      "addressedTo": "A tenant in Noida, Uttar Pradesh",
+      "originalLanguage": "English",
+      "affectedAreas": [
+        "Noida"
+      ],
+      "dateKind": "deadline",
+      "dateText": "within 15 days from the receipt of this notice",
+      "eventDate": null,
+      "endDate": null,
+      "startTime": null,
+      "endTime": null,
+      "amount": "Rs. 1,20,000/-",
+      "officeLocation": "Tis Hazari Courts, Delhi",
+      "documentsRequired": [],
+      "conditions": [],
+      "requirements": [
+        "Pay the outstanding rent amount.",
+        "Vacate the premises."
+      ],
+      "consequences": [
+        "The client will start legal proceedings against you at your own risk and cost."
+      ],
+      "lawsCited": [],
+      "keyTerms": [
+        {
+          "term": "unauthorised occupation",
+          "meaning": "Staying in a property without legal right or permission."
+        },
+        {
+          "term": "arrears of rent",
+          "meaning": "Money that is owed and should have been paid earlier for rent."
+        },
+        {
+          "term": "legal proceedings",
+          "meaning": "Action taken in a court of law."
+        }
+      ],
+      "suggestions": [
+        "Keep the original document in a safe place.",
+        "Note the date you received this notice.",
+        "Speak to a lawyer or free legal aid before replying."
+      ],
+      "personalDetails": [
+        "R. K. Sharma"
+      ],
+      "explanation": "This is a legal notice from an advocate on behalf of a client. It claims that the recipient is staying in a property without permission and owes 1,20,000 rupees in unpaid rent since March 2024. The recipient is asked to pay the money and move out within 15 days of receiving this notice.",
+      "evidence": [
+        {
+          "field": "issuer",
+          "quote": "ADVOCATE R. K. Sharma"
+        },
+        {
+          "field": "amount",
+          "quote": "Rs. 1,20,000/- (Rupees One Lakh Twenty Thousand only)"
+        },
+        {
+          "field": "requirements",
+          "quote": "clear the outstanding amount and vacate the premises within 15 days from the receipt of this notice"
+        },
+        {
+          "field": "consequences",
+          "quote": "failing which my client shall be constrained to initiate appropriate legal proceedings against you at your own risk and cost."
+        }
+      ],
+      "unresolved": [
+        "The exact deadline date must be calculated by the reader based on when the notice was received.",
+        "The specific property number and sector in Noida are blacked out."
+      ]
+    }
+  }
+]

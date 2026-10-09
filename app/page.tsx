@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   EMPTY_PROFILE,
   buildCard,
@@ -95,31 +101,39 @@ async function toTiles(file: File): Promise<string[]> {
   });
 }
 
+// Include the original bytes for supported files within the size limit.
+function originalFile(file: File): Promise<string | null> {
+  if (file.size > 700_000 || !/^image\/(jpeg|png|webp)$/i.test(file.type)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 async function extract(
   image: string,
   tiles: string[],
   language: Language,
-  sourceImage: string | null,
+  original: string | null,
 ): Promise<Result> {
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image, tiles, language, sourceImage }),
+    body: JSON.stringify({ image, tiles, language, original }),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body?.notice) {
     throw new Error(body?.error || "Something went wrong. Please try again.");
   }
-  return { notice: body.notice, image, source: "live", language, model: body.model };
-}
-
-function originalDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read the photo."));
-    reader.onerror = () => reject(new Error("Could not read the photo."));
-    reader.readAsDataURL(file);
-  });
+  return {
+    notice: body.notice,
+    image,
+    source: "live",
+    language,
+    model: body.model,
+  };
 }
 
 // Bring the new result into view and move screen-reader focus to it.
@@ -1311,6 +1325,52 @@ function HeroArt() {
   );
 }
 
+const WELCOME: Record<Language, { title: string; note: string }> = {
+  en: { title: "Choose your language", note: "You can change it any time at the top of the page." },
+  kn: { title: "ನಿಮ್ಮ ಭಾಷೆ ಆಯ್ಕೆಮಾಡಿ", note: "ಪುಟದ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಯಾವಾಗ ಬೇಕಾದರೂ ಬದಲಿಸಬಹುದು." },
+  hi: { title: "अपनी भाषा चुनें", note: "इसे पेज के ऊपर से कभी भी बदल सकते हैं." },
+};
+
+// Shown once, on the first visit: pick the language before anything else.
+// Each choice is written in its own language so nobody needs English to find
+// theirs. Closing it without choosing keeps the current language.
+function LanguageWelcome({ onChoose }: { onChoose: (language: Language | null) => void }) {
+  return (
+    <dialog
+      className="welcome"
+      aria-labelledby="welcome-title"
+      ref={(el) => {
+        if (el && !el.open) el.showModal();
+      }}
+      onClose={() => onChoose(null)}
+    >
+      <h2 id="welcome-title">
+        {(Object.keys(WELCOME) as Language[]).map((l) => (
+          <span key={l} lang={l}>
+            {WELCOME[l].title}
+          </span>
+        ))}
+      </h2>
+      <div className="welcome-choices">
+        {(Object.keys(LANGUAGES) as Language[]).map((l) => (
+          <button key={l} lang={l} onClick={() => onChoose(l)}>
+            {LANGUAGES[l].label.split(" (")[0]}
+          </button>
+        ))}
+      </div>
+      <p className="muted">
+        {(Object.keys(WELCOME) as Language[]).map((l) => (
+          <span key={l} lang={l}>
+            {WELCOME[l].note}
+          </span>
+        ))}
+      </p>
+    </dialog>
+  );
+}
+
+const noSubscription = () => () => {};
+
 const FEATURES: { icon: IconName; tint: Tint; title: string; text: string }[] = [
   { icon: "search", tint: "amber", title: "See the source.", text: "Check important details against the words in your notice." },
   { icon: "home", tint: "green", title: "Make it personal.", text: "Find out what the notice means for your area and household." },
@@ -1320,6 +1380,11 @@ const FEATURES: { icon: IconName; tint: Tint; title: string; text: string }[] = 
 
 export default function Home() {
   const [language, setLanguage] = useStored<Language>("nta.language", "en");
+  // Whether this browser has been asked for its language yet. `inBrowser`
+  // keeps the question out of the server-rendered page, where the answer is
+  // not known.
+  const [asked, setAsked] = useStored<boolean>("nta.languageAsked", false);
+  const inBrowser = useSyncExternalStore(noSubscription, () => true, () => false);
   const [scale, setScale] = useStored<number>("nta.scale", 1);
   const [profile, setProfile] = useStored<Profile>("nta.profile", EMPTY_PROFILE);
   const [reminders, setReminders] = useStored<SavedReminder[]>("nta.reminders", NO_REMINDERS);
@@ -1361,12 +1426,7 @@ export default function Home() {
       const image = await toDataUrl(file);
       setPending({ slot, image });
       const tiles = await toTiles(file);
-      // The original file is only sent when it is small. Hosted servers cap
-      // the size of a request, and a phone photo alone can exceed that cap.
-      const sourceImage = file.size <= 300_000 && /^(image\/(jpeg|png|webp))$/i.test(file.type)
-        ? await originalDataUrl(file)
-        : null;
-      const result = await extract(image, tiles, language, sourceImage);
+      const result = await extract(image, tiles, language, await originalFile(file));
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
       showResult("result");
@@ -1389,15 +1449,6 @@ export default function Home() {
       revised: null,
     });
     showResult("result");
-  }
-
-  async function tryMessyNotice() {
-    const response = await fetch("/bwssb-notice-sample.png");
-    if (!response.ok) {
-      setError("The sample notice could not be loaded.");
-      return;
-    }
-    onFile(new File([await response.blob()], "bwssb-notice-sample.png", { type: "image/png" }), "original");
   }
 
   const current = thread ? (thread.revised ?? thread.original) : null;
@@ -1443,6 +1494,14 @@ export default function Home() {
   return (
     <LangContext.Provider value={language}>
     <div className="app" lang={language} style={{ "--scale": scale } as CSSProperties}>
+      {inBrowser && !asked && (
+        <LanguageWelcome
+          onChoose={(chosen) => {
+            if (chosen) setLanguage(chosen);
+            setAsked(true);
+          }}
+        />
+      )}
       <a className="skip" href="#start">
         {t("Skip to upload")}
       </a>
@@ -1533,10 +1592,6 @@ export default function Home() {
                     </div>
                     <div className="samples">
                       <span>{t("Just looking? Try an example")}</span>
-                      <button className="chip-btn" onClick={() => void tryMessyNotice()}>
-                        Try messy notice photo
-                      </button>
-                      <a href="/bwssb-notice-sample.png" target="_blank" rel="noreferrer">View photo</a>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_WATER)}>
                         {t("Water cut")}
                       </button>

@@ -46,6 +46,7 @@ Built for Hacktoberfest Hack Day Bengaluru '26 (PS 01, Multimodal Community Inte
 
 ## Built for older users and phones
 
+- On the first visit the site asks for your language before anything else, with each choice written in its own script. It is remembered, and can be changed at the top of the page.
 - Set in Atkinson Hyperlegible, a typeface designed for readers with low vision, with A / A+ / A++ buttons that scale the whole page and are remembered on the device.
 - Numbered steps, big buttons (56 px minimum), full-width on phones, with a "Take a photo" button that opens the camera. The upload buttons are on the first screen.
 - The result opens with the headline and a calendar-style date tile, and a row of section links stays at the top while you scroll.
@@ -74,7 +75,8 @@ Two synthetic water-cut notices in `samples/` (one English, one Kannada) were re
 - If you sign in and press Save, the facts read from the notice are stored in a SQLite file on the server (`data/app.db`, Git-ignored) under your account, and their text is sent to Google's embedding service. Questions you ask across your notices are sent there too.
 - If you tick the sharing box, the filtered summary described under "The shared library" becomes readable by anyone who asks the library a question. The app says so before upload. Nothing is processed on the device.
 - The household profile, text size, language and saved reminders are kept in the browser's local storage and are not sent to the server or the model.
-- Without an account nothing is written to disk; the server only keeps a result in memory to avoid repeating a request for the same image.
+- For every upload, signed in or not, the server stores extracted facts and highlight positions. The photo itself is not stored.
+- For files up to about 700 KB the untouched original is sent along with the shrunken copies, only to work out that fingerprint.
 - Sharing happens only when you press Share or Copy.
 
 ## Run it
@@ -147,6 +149,7 @@ Vercel also limits a request to about 4.5 MB. The browser shrinks the photo and 
 | `app/highlights.ts` | Combines the two halves and fits each mark to the printed line |
 | `app/api/calendar/route.ts`, `lib/calendar.ts` | Adds or updates a reminder in Google Calendar |
 | `lib/db.ts`, `lib/auth.ts` | The SQLite database (built into Node) and accounts |
+| `lib/readings.ts`, `lib/seed-readings.json` | Reading and highlight storage |
 | `lib/retrieve.ts` | Embeddings, ranking, saved notices and the shared library |
 | `app/account.tsx`, `app/login/page.tsx` | Sign-in page and the saved-notice, related-notice and question components |
 | `lib/i18n.ts` | Interface text and family card labels in English, Kannada and Hindi |

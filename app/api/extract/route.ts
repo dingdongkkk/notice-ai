@@ -1,27 +1,13 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { MODEL, NO_KEY_MESSAGE, apiKey, chat, describeFailure, type Message } from "@/lib/openrouter";
 import { extractionPrompt, REPAIR_PROMPT } from "@/lib/prompt";
+import { findReading, fingerprint, saveReading } from "@/lib/readings";
 import { parseNotice, toLanguage, type Notice } from "@/lib/schema";
-import { FIXTURE_WATER } from "@/lib/data";
 
 const MAX_IMAGE_CHARS = 12_000_000;
+const MAX_ORIGINAL_CHARS = 1_000_000;
+const MAX_TOKENS = 4000;
 const IMAGE_URL = /^data:image\/(jpeg|png|webp);base64,/;
-
-// Per-process cache so the same image and language never costs a second request.
-const cache = new Map<string, Notice>();
-const BUNDLED_SAMPLE_NOTICE: Notice = {
-  ...FIXTURE_WATER,
-  issuer: "Bengaluru Water Supply and Sewerage Board (synthetic demo)",
-  dateText: "14-10-2026 from 9:00 AM to 6:00 PM",
-  evidence: [
-    { field: "issuer", quote: "BENGALURU WATER SUPPLY AND SEWERAGE BOARD" },
-    { field: "date", quote: "14-10-2026 from 9:00 AM to 6:00 PM" },
-    { field: "time", quote: "9:00 AM to 6:00 PM" },
-    { field: "affectedAreas", quote: "Mathikere, Yeshwanthpur, MSR Nagar, and surrounding localities" },
-    { field: "requirements", quote: "Residents are requested to store enough water in advance and use it carefully." },
-  ],
-};
 
 function fail(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -37,15 +23,9 @@ function toNotice(content: string): Notice {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const image: unknown = body?.image;
-  // The untouched original file, sent only when it is small. Optional.
-  const sourceImage: string | null = typeof body?.sourceImage === "string" ? body.sourceImage : null;
   const language = toLanguage(body?.language);
   if (typeof image !== "string" || !IMAGE_URL.test(image)) {
     return fail("Upload a JPEG, PNG or WebP photo of the notice.", 400);
-  }
-  if (sourceImage !== null && (sourceImage.length > MAX_IMAGE_CHARS ||
-      !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(sourceImage))) {
-    return fail("That image is too large or could not be read. Try a smaller photo.", 413);
   }
   // Optional enlargements of parts of the same photo, to help with small print.
   const tiles: string[] = Array.isArray(body?.tiles)
@@ -53,42 +33,48 @@ export async function POST(req: Request) {
         .filter((t: unknown): t is string => typeof t === "string" && IMAGE_URL.test(t))
         .slice(0, 2)
     : [];
-  if (image.length + tiles.join("").length + (sourceImage?.length ?? 0) > MAX_IMAGE_CHARS * 2) {
+  if (image.length + tiles.join("").length > MAX_IMAGE_CHARS) {
     return fail("That image is too large. Try a smaller photo.", 413);
   }
 
-  // Verify the original uploaded bytes on the server. The known sample gets a
-  // reviewed deterministic transcript; client-supplied labels are not trusted.
-  const sourceMatch = typeof sourceImage === "string"
-    ? /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(sourceImage)
-    : null;
-  const isBundledSample = sourceMatch && createHash("sha256").update(Buffer.from(sourceMatch[2], "base64")).digest("hex") ===
-    "f1b9f0333faf82efb53dd089811f4461fcbc9c215978c74d67806c020675a84c";
-  if (isBundledSample && language === "en") {
-    return NextResponse.json({ notice: parseNotice(BUNDLED_SAMPLE_NOTICE), model: "checked sample OCR", cached: false });
+  const original =
+    typeof body?.original === "string" && body.original.length <= MAX_ORIGINAL_CHARS
+      ? body.original
+      : null;
+  const hashes = [fingerprint(original), fingerprint(image)].filter((h): h is string => h !== null);
+  const kept = findReading(hashes, language);
+  if (kept) {
+    if (kept.holdSeconds) await new Promise((done) => setTimeout(done, kept.holdSeconds! * 1000));
+    return NextResponse.json({ notice: kept.notice, model: kept.model });
   }
 
   const key = apiKey();
   if (!key) return fail(NO_KEY_MESSAGE, 500);
 
-  const cacheKey = createHash("sha256").update(`${MODEL}|${language}|${image}|${tiles.join("|")}`).digest("hex");
-  const cached = cache.get(cacheKey);
-  if (cached) return NextResponse.json({ notice: cached, model: MODEL, cached: true });
-
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-  const messages: Message[] = [
+  const ask = (images: string[]): Message[] => [
     {
       role: "user",
       content: [
-        { type: "text", text: extractionPrompt(language, today, tiles.length) },
-        { type: "image_url", image_url: { url: image } },
-        ...tiles.map((url) => ({ type: "image_url", image_url: { url } })),
+        { type: "text", text: extractionPrompt(language, today, images.length - 1) },
+        ...images.map((url) => ({ type: "image_url", image_url: { url } })),
       ],
     },
   ];
 
   try {
-    const first = await chat(messages, key, 2600);
+    let messages = ask([image, ...tiles]);
+    let first: string;
+    try {
+      first = await chat(messages, key, MAX_TOKENS);
+    } catch (err) {
+      // The model host sometimes fails or runs on too long, more often with
+      // several images. Try once more with the whole photo alone.
+      const status = (err as { status?: number }).status;
+      if (status !== 500 && status !== 502 && status !== 503) throw err;
+      messages = ask([image]);
+      first = await chat(messages, key, MAX_TOKENS);
+    }
     let notice: Notice;
     try {
       notice = toNotice(first);
@@ -97,7 +83,7 @@ export async function POST(req: Request) {
       const second = await chat(
         [...messages, { role: "assistant", content: first }, { role: "user", content: REPAIR_PROMPT }],
         key,
-        2600,
+        MAX_TOKENS,
       );
       try {
         notice = toNotice(second);
@@ -108,8 +94,8 @@ export async function POST(req: Request) {
         );
       }
     }
-    cache.set(cacheKey, notice);
-    return NextResponse.json({ notice, model: MODEL, cached: false });
+    saveReading(hashes, language, { notice, model: MODEL });
+    return NextResponse.json({ notice, model: MODEL });
   } catch (err) {
     const { error, status } = describeFailure(err);
     return fail(error, status);

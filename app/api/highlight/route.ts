@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { NO_KEY_MESSAGE, apiKey, chat, describeFailure } from "@/lib/openrouter";
 import { HIGHLIGHT_PROMPT } from "@/lib/prompt";
+import { findBoxes, fingerprint, saveBoxes } from "@/lib/readings";
 
 const LABELS = ["date", "time", "areas", "amount", "office", "documents", "action", "consequence", "reference"];
 
@@ -9,13 +10,17 @@ export type Box = { label: string; top: number; left: number; height: number; wi
 // Asks Gemma 4 where the important parts are written on the page, and returns
 // them as percentages of the image so they can be drawn over the photo.
 export async function POST(req: Request) {
-  const key = apiKey();
-  if (!key) return NextResponse.json({ error: NO_KEY_MESSAGE }, { status: 500 });
   const body = await req.json().catch(() => null);
   const image: unknown = body?.image;
   if (typeof image !== "string" || !/^data:image\/(jpeg|png|webp);base64,/.test(image)) {
     return NextResponse.json({ error: "Upload a JPEG, PNG or WebP photo." }, { status: 400 });
   }
+  const hash = fingerprint(image);
+  const kept = hash ? findBoxes(hash) : null;
+  if (kept) return NextResponse.json({ boxes: kept });
+
+  const key = apiKey();
+  if (!key) return NextResponse.json({ error: NO_KEY_MESSAGE }, { status: 500 });
 
   try {
     const reply = await chat(
@@ -50,7 +55,9 @@ export async function POST(req: Request) {
         width: (x2 - x1) / 10,
       });
     }
-    return NextResponse.json({ boxes: boxes.slice(0, 30) });
+    const found = boxes.slice(0, 30);
+    if (hash && found.length > 0) saveBoxes(hash, found);
+    return NextResponse.json({ boxes: found });
   } catch (err) {
     if (err instanceof SyntaxError) return NextResponse.json({ boxes: [] });
     const { error, status } = describeFailure(err);

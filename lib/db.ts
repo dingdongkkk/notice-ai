@@ -39,6 +39,19 @@ export function database(): DatabaseSync {
       embedding TEXT
     );
     CREATE INDEX IF NOT EXISTS documents_user ON documents(user_id, created);
+    CREATE TABLE IF NOT EXISTS readings (
+      hash TEXT NOT NULL,
+      language TEXT NOT NULL,
+      model TEXT NOT NULL,
+      notice TEXT NOT NULL,
+      created TEXT NOT NULL,
+      PRIMARY KEY (hash, language)
+    );
+    CREATE TABLE IF NOT EXISTS highlights (
+      hash TEXT PRIMARY KEY,
+      boxes TEXT NOT NULL,
+      created TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS library (
       id INTEGER PRIMARY KEY,
       created TEXT NOT NULL,
