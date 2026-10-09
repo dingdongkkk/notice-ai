@@ -1,6 +1,13 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   EMPTY_PROFILE,
   buildCard,
@@ -24,7 +31,7 @@ import {
   FIXTURE_WATER_REVISED,
   findRecords,
 } from "@/lib/data";
-import { CARD_LABELS } from "@/lib/i18n";
+import { CARD_LABELS, translator, type T } from "@/lib/i18n";
 import { LANGUAGES, isIsoDate, isTime, type Language, type Notice } from "@/lib/schema";
 import { useStored } from "@/lib/store";
 import { Icon, type IconName } from "./icons";
@@ -47,6 +54,14 @@ const SCALES = [
   { value: 1.2, label: "A+", name: "Large text" },
   { value: 1.4, label: "A++", name: "Very large text" },
 ];
+
+// The interface language. Text the model wrote stays in the language it was
+// asked for; everything else follows this.
+const LangContext = createContext<Language>("en");
+
+function useT(): T {
+  return translator(useContext(LangContext));
+}
 
 // Downscale in the browser so small Kannada text stays legible but the upload stays small.
 async function toDataUrl(file: File): Promise<string> {
@@ -98,27 +113,29 @@ const TAGS = {
 } as const;
 
 function Tag({ kind }: { kind: keyof typeof TAGS }) {
-  return <span className={`tag ${kind}`}>{TAGS[kind]}</span>;
+  const t = useT();
+  return <span className={`tag ${kind}`}>{t(TAGS[kind])}</span>;
 }
 
 // "Show me where": the passages the model says support a fact, plus a jump to the photo.
 function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const quotes = notice.evidence.filter((e) => fields.includes(e.field));
   return (
     <div className="proof">
       <button className="proof-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="search" size="1.05em" />
-        {open ? "Hide proof" : "Show me where"}
+        {t(open ? "Hide proof" : "Show me where")}
       </button>
       {open && (
         <div className="proof-body">
           {quotes.length === 0 ? (
-            <p>The AI gave no passage for this. Please check the photo yourself.</p>
+            <p>{t("The AI gave no passage for this. Please check the photo yourself.")}</p>
           ) : (
             quotes.map((q, i) => (
               <figure key={i} className="snippet">
-                <figcaption>From the notice</figcaption>
+                <figcaption>{t("From the notice")}</figcaption>
                 <blockquote lang={notice.originalLanguage === "Kannada" ? "kn" : undefined}>
                   <mark>{q.quote}</mark>
                 </blockquote>
@@ -126,7 +143,7 @@ function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
             ))
           )}
           <p className="muted">
-            This is the AI&apos;s reading of the notice. <a href="#photo">Compare with the photo</a>.
+            {t("This is the AI's reading of the notice.")} <a href="#photo">{t("Compare with the photo")}</a>
           </p>
         </div>
       )}
@@ -135,6 +152,7 @@ function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
 }
 
 function ReadAloud({ text, language, light = false }: { text: string; language: Language; light?: boolean }) {
+  const t = useT();
   const [state, setState] = useState<"idle" | "speaking" | "unavailable">("idle");
   function toggle() {
     if (!("speechSynthesis" in window)) return setState("unavailable");
@@ -158,11 +176,11 @@ function ReadAloud({ text, language, light = false }: { text: string; language: 
     <>
       <button className={light ? "on-dark" : "ghost"} onClick={toggle}>
         <Icon name={state === "speaking" ? "stop" : "speaker"} />
-        {state === "speaking" ? "Stop reading" : "Read aloud"}
+        {t(state === "speaking" ? "Stop reading" : "Read aloud")}
       </button>
       {state === "unavailable" && (
         <p className="muted" role="status">
-          This device has no {LANGUAGES[language].name} voice installed.
+          {t("This device has no {lang} voice installed.", { lang: LANGUAGES[language].name })}
         </p>
       )}
     </>
@@ -219,12 +237,13 @@ function Banner({
 }
 
 function DateTile({ date, language }: { date: string | null; language: Language }) {
+  const t = useT();
   if (!isIsoDate(date)) {
     return (
       <div className="tile unknown" aria-hidden="true">
-        <span className="tile-top">Date</span>
+        <span className="tile-top">{t("Date")}</span>
         <span className="tile-day">?</span>
-        <span className="tile-bottom">check</span>
+        <span className="tile-bottom">{t("check")}</span>
       </div>
     );
   }
@@ -249,13 +268,14 @@ function Choice({
   value: YesNo;
   onChange: (v: YesNo) => void;
 }) {
+  const t = useT();
   return (
     <fieldset className="choice">
       <legend>{legend}</legend>
       {(["yes", "no", ""] as YesNo[]).map((v) => (
         <label key={v || "skip"} className={value === v ? "on" : ""}>
           <input type="radio" name={legend} checked={value === v} onChange={() => onChange(v)} />
-          {v === "yes" ? "Yes" : v === "no" ? "No" : "Skip"}
+          {t(v === "yes" ? "Yes" : v === "no" ? "No" : "Skip")}
         </label>
       ))}
     </fieldset>
@@ -291,14 +311,15 @@ function verdict(n: Notice, outcome: Outcome): { title: string; sub: string; ton
 // Circulars and legal papers: the consequences the document states, the laws
 // it names, and its official words explained. Nothing here is advice.
 function FinePrint({ notice, lang }: { notice: Notice; lang: Language }) {
+  const t = useT();
   const n = notice;
   if (n.consequences.length + n.lawsCited.length + n.keyTerms.length === 0) return null;
   return (
-    <Section id="fineprint" title="The fine print, in plain words" icon="info" tint="violet">
+    <Section id="fineprint" title={t("The fine print, in plain words")} icon="info" tint="violet">
       {n.consequences.length > 0 && (
         <>
           <h3>
-            If you do not act, the document says <Tag kind="notice" />
+            {t("If you do not act, the document says")} <Tag kind="notice" />
           </h3>
           <ul className="plain-list" lang={lang}>
             {n.consequences.map((c) => (
@@ -311,7 +332,7 @@ function FinePrint({ notice, lang }: { notice: Notice; lang: Language }) {
       {n.keyTerms.length > 0 && (
         <>
           <h3>
-            Official words explained <Tag kind="explain" />
+            {t("Official words explained")} <Tag kind="explain" />
           </h3>
           <dl className="terms" lang={lang}>
             {n.keyTerms.map((k) => (
@@ -326,7 +347,7 @@ function FinePrint({ notice, lang }: { notice: Notice; lang: Language }) {
       {n.lawsCited.length > 0 && (
         <>
           <h3>
-            Laws and rules it names <Tag kind="notice" />
+            {t("Laws and rules it names")} <Tag kind="notice" />
           </h3>
           <ul className="plain-list">
             {n.lawsCited.map((l) => (
@@ -349,17 +370,18 @@ function Household({
   profile: Profile;
   setProfile: (p: Profile) => void;
 }) {
-  const { outcome, checks } = checkRelevance(notice, profile);
+  const t = useT();
+  const { outcome, checks } = checkRelevance(notice, profile, t);
   const v = verdict(notice, outcome);
   return (
-    <Section id="household" title="Does this affect my family?" icon="home" tint="green">
+    <Section id="household" title={t("Does this affect my family?")} icon="home" tint="green">
       <Banner tone={v.tone} big live>
-        <strong>{OUTCOME_LABEL[outcome]}</strong>
+        <strong>{t(OUTCOME_LABEL[outcome])}</strong>
         <br />
-        {v.title}. {v.sub}.
+        {t(v.title)}. {t(v.sub)}.
       </Banner>
       {checks.length === 0 ? (
-        <p>The notice states no areas or conditions that can be checked.</p>
+        <p>{t("The notice states no areas or conditions that can be checked.")}</p>
       ) : (
         <ul className="reasons">
           {checks.map((c, i) => (
@@ -376,41 +398,41 @@ function Household({
         </ul>
       )}
       <p className="muted">
-        This is a simple comparison, not a final decision on eligibility. Confirm with the issuer.
+        {t("This is a simple comparison, not a final decision on eligibility. Confirm with the issuer.")}
       </p>
       <details open={!profile.locality}>
-        <summary>My household details</summary>
+        <summary>{t("My household details")}</summary>
         <p className="muted">
-          Optional. Kept only in this browser and never sent to the AI. No ID numbers are needed.
+          {t("Optional. Kept only in this browser and never sent to the AI. No ID numbers are needed.")}
         </p>
         <label className="field">
-          Locality or area name
+          {t("Locality or area name")}
           <input
             type="text"
             value={profile.locality}
             autoComplete="address-level3"
-            placeholder="e.g. Mathikere"
+            placeholder={t("e.g. Mathikere")}
             onChange={(e) => setProfile({ ...profile, locality: e.target.value })}
           />
         </label>
         <label className="field">
-          Water provider
+          {t("Water provider")}
           <select
             value={profile.provider}
             onChange={(e) => setProfile({ ...profile, provider: e.target.value as Profile["provider"] })}
           >
-            <option value="">Not sure</option>
-            <option value="bwssb">BWSSB (Cauvery water)</option>
-            <option value="other">Another provider, borewell or tanker</option>
+            <option value="">{t("Not sure")}</option>
+            <option value="bwssb">{t("BWSSB (Cauvery water)")}</option>
+            <option value="other">{t("Another provider, borewell or tanker")}</option>
           </select>
         </label>
         <Choice
-          legend="Is there a student in the household?"
+          legend={t("Is there a student in the household?")}
           value={profile.student}
           onChange={(student) => setProfile({ ...profile, student })}
         />
         <Choice
-          legend="Is there a senior citizen in the household?"
+          legend={t("Is there a senior citizen in the household?")}
           value={profile.senior}
           onChange={(senior) => setProfile({ ...profile, senior })}
         />
@@ -459,21 +481,22 @@ function VisitReadiness({
   have: string[];
   setHave: (h: string[]) => void;
 }) {
+  const t = useT();
   const offices = findRecords(notice).filter((r) => r.kind === "office");
   const docs = notice.documentsRequired;
   const missing = docs.length - have.length;
   return (
-    <Section id="visit" title="Before you leave home" icon="bag" tint="violet">
+    <Section id="visit" title={t("Before you leave home")} icon="bag" tint="violet">
       {docs.length > 0 && (
         <>
           <h3>
-            Documents to carry <Tag kind="notice" />
+            {t("Documents to carry")} <Tag kind="notice" />
           </h3>
           <div className="meter-row">
             <div
               className="meter"
               role="progressbar"
-              aria-label="Documents collected"
+              aria-label={t("Documents collected")}
               aria-valuemin={0}
               aria-valuemax={docs.length}
               aria-valuenow={have.length}
@@ -487,13 +510,13 @@ function VisitReadiness({
           <CheckList items={docs} lang={lang} done={have} setDone={setHave} />
           <Banner tone={missing === 0 ? "ok" : "warn"} live>
             {missing === 0
-              ? "You have ticked every listed document."
-              : `${missing} of ${docs.length} documents still to collect.`}
+              ? t("You have ticked every listed document.")
+              : t("{m} of {n} documents still to collect.", { m: missing, n: docs.length })}
           </Banner>
           <Proof notice={notice} fields={["documents"]} />
         </>
       )}
-      <h3>Where to go</h3>
+      <h3>{t("Where to go")}</h3>
       {notice.officeLocation ? (
         <>
           <p lang={lang}>
@@ -502,7 +525,7 @@ function VisitReadiness({
           <Proof notice={notice} fields={["office"]} />
         </>
       ) : (
-        <p>The notice does not name an office.</p>
+        <p>{t("The notice does not name an office.")}</p>
       )}
       {offices.map((r) => (
         <div key={r.service} className="external">
@@ -512,21 +535,21 @@ function VisitReadiness({
             {r.detail}
           </p>
           <p className="muted">
-            {r.matchRule} <a href={r.sourceUrl} target="_blank" rel="noreferrer">Source</a>, retrieved{" "}
-            {r.retrieved}.
+            {r.matchRule} <a href={r.sourceUrl} target="_blank" rel="noreferrer">{t("Source")}</a>, {t("retrieved {d}", { d: r.retrieved })}.
           </p>
         </div>
       ))}
       <Banner tone="warn">
         {offices.some((r) => r.hours)
-          ? "Opening hours come from an outside source. Confirm before travelling."
-          : "Opening hours unavailable. Confirm before travelling."}
+          ? t("Opening hours come from an outside source. Confirm before travelling.")
+          : t("Opening hours unavailable. Confirm before travelling.")}
       </Banner>
     </Section>
   );
 }
 
 function Ask({ notice, language }: { notice: Notice; language: Language }) {
+  const t = useT();
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
@@ -553,33 +576,33 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
     }
   }
   return (
-    <Section id="ask" title="Ask about this notice" icon="chat" tint="blue">
+    <Section id="ask" title={t("Ask about this notice")} icon="chat" tint="blue">
       <form onSubmit={ask} className="ask">
         <label className="field">
-          <span className="sr">Your question</span>
+          <span className="sr">{t("Your question")}</span>
           <input
             type="text"
             value={question}
             maxLength={300}
-            placeholder="e.g. Will tankers be arranged?"
+            placeholder={t("e.g. Will tankers be arranged?")}
             onChange={(e) => setQuestion(e.target.value)}
           />
         </label>
         <button disabled={busy || !question.trim()}>
-          {busy ? "Asking…" : "Ask"}
+          {t(busy ? "Asking…" : "Ask")}
           {!busy && <Icon name="arrow" />}
         </button>
       </form>
       {error && (
         <div role="alert">
-          <Banner tone="bad">{error}</Banner>
+          <Banner tone="bad">{t(error)}</Banner>
         </div>
       )}
       {answer && (
         <div role="status" className="answer-bubble">
           <p lang={language}>{answer}</p>
           <p className="muted">
-            Answered by Gemma 4 using only the facts read from the notice. It can be wrong.
+            {t("Answered by Gemma 4 using only the facts read from the notice. It can be wrong.")}
           </p>
         </div>
       )}
@@ -588,23 +611,24 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
 }
 
 function Photo({ image }: { image: string | null }) {
+  const t = useT();
   const dialog = useRef<HTMLDialogElement>(null);
-  if (!image) return <p className="muted">This is a synthetic sample, so there is no photo.</p>;
+  if (!image) return <p className="muted">{t("This is a synthetic sample, so there is no photo.")}</p>;
   return (
     <>
       <button className="photo" onClick={() => dialog.current?.showModal()}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt="The notice you uploaded" />
+        <img src={image} alt={t("The notice you uploaded")} />
         <span>
-          <Icon name="zoom" /> Tap to enlarge
+          <Icon name="zoom" /> {t("Tap to enlarge")}
         </span>
       </button>
-      <dialog ref={dialog} className="zoom" aria-label="Enlarged notice photo">
+      <dialog ref={dialog} className="zoom" aria-label={t("Enlarged notice photo")}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={image} alt="The notice you uploaded, enlarged" />
         <form method="dialog">
           <button>
-            <Icon name="close" /> Close
+            <Icon name="close" /> {t("Close")}
           </button>
         </form>
       </dialog>
@@ -627,6 +651,7 @@ function Flow({
   reminders: SavedReminder[];
   setReminders: (r: SavedReminder[]) => void;
 }) {
+  const t = useT();
   const n = result.notice;
   const lang = result.language;
   const [date, setDate] = useState(n.eventDate ?? "");
@@ -648,21 +673,22 @@ function Flow({
   const savedIsCurrent = !!saved && saved.date === date && (saved.startTime ?? "") === start;
   const helplines = findRecords(n).filter((r) => r.kind === "helpline");
   const hasVisit = n.documentsRequired.length > 0 || !!n.officeLocation;
-  const dateLabel =
-    n.dateKind === "deadline" ? "Deadline" : n.dateKind === "effective" ? "In force from" : "When";
+  const dateLabel = t(
+    n.dateKind === "deadline" ? "Deadline" : n.dateKind === "effective" ? "In force from" : "When",
+  );
   const shownDate = confirmed?.date ?? n.eventDate;
   const whenText = confirmed
     ? formatWhen(confirmed, lang)
     : n.eventDate
       ? formatWhen({ date: n.eventDate, startTime: n.startTime, endTime: n.endTime }, lang)
       : null;
-  const { outcome } = checkRelevance(n, profile);
+  const { outcome } = checkRelevance(n, profile, t);
   const v = verdict(n, outcome);
   const where = n.officeLocation
     ? n.officeLocation
     : n.affectedAreas.length
       ? n.affectedAreas.slice(0, 3).join(", ") +
-        (n.affectedAreas.length > 3 ? ` and ${n.affectedAreas.length - 3} more` : "")
+        (n.affectedAreas.length > 3 ? ` ${t("and {n} more", { n: n.affectedAreas.length - 3 })}` : "")
       : null;
 
   const card = buildCard(n, confirmed, lang, hidePersonal);
@@ -691,10 +717,13 @@ function Flow({
     );
     setStatus(
       out.status === "created"
-        ? "Reminder saved and calendar file downloaded. Open the file to add it to your calendar."
+        ? t("Reminder saved and calendar file downloaded. Open the file to add it to your calendar.")
         : out.status === "updated"
-          ? `Reminder updated from ${formatWhen(out.previous!)} to ${formatWhen(confirmed)}. No second reminder was created. Open the downloaded file to update your calendar.`
-          : "This reminder was already saved, so nothing new was added. The calendar file was downloaded again.",
+          ? t(
+              "Reminder updated from {a} to {b}. No second reminder was created. Open the downloaded file to update your calendar.",
+              { a: formatWhen(out.previous!, lang), b: formatWhen(confirmed, lang) },
+            )
+          : t("This reminder was already saved, so nothing new was added. The calendar file was downloaded again."),
     );
   }
 
@@ -702,9 +731,9 @@ function Flow({
     try {
       await navigator.clipboard.writeText(cardText);
       setShared(true);
-      setStatus("Card copied. Paste it into a message to share it.");
+      setStatus(t("Card copied. Paste it into a message to share it."));
     } catch {
-      setStatus("Could not copy automatically. Please select the text and copy it.");
+      setStatus(t("Could not copy automatically. Please select the text and copy it."));
     }
   }
 
@@ -748,7 +777,7 @@ function Flow({
 
   return (
     <>
-      <nav className="stepper" aria-label="Your plan for this notice">
+      <nav className="stepper" aria-label={t("Your plan for this notice")}>
         <span className="stepper-count">
           {doneCount}/{steps.length}
         </span>
@@ -759,7 +788,7 @@ function Flow({
                 <span className="stepper-dot" aria-hidden="true">
                   {s.done ? <Icon name="check" size="0.9em" /> : i + 1}
                 </span>
-                {s.label}
+                {t(s.label)}
                 <span className="sr">{s.done ? " (done)" : " (to do)"}</span>
               </a>
             </li>
@@ -771,11 +800,11 @@ function Flow({
         <div className="col">
           <section className="verdict" aria-labelledby="answer">
             <div className="verdict-chips">
-              <span>{n.documentType ?? "Notice"}</span>
+              <span>{n.documentType ?? t("Notice")}</span>
               {n.issuer && <span>{n.issuer}</span>}
             </div>
             <h2 id="answer" lang={lang}>
-              {n.headline ?? n.title ?? "Here is what the notice says"}
+              {n.headline ?? n.title ?? t("Here is what the notice says")}
             </h2>
             <p className="lead" lang={lang}>
               {n.explanation}
@@ -787,28 +816,28 @@ function Flow({
                 <div className="stat-when">
                   <DateTile date={shownDate} language={lang} />
                   <p lang={whenText ? lang : undefined}>
-                    {whenText ?? "Not readable. Please check the notice."}
+                    {whenText ?? t("Not readable. Please check the notice.")}
                   </p>
                 </div>
                 <Tag kind={n.eventDate && n.unresolved.length === 0 ? "notice" : "confirm"} />
               </div>
               <div className="stat">
-                <span className="stat-label">{n.officeLocation ? "Where" : "Areas"}</span>
-                <p lang={where ? lang : undefined}>{where ?? "Not stated in the notice"}</p>
+                <span className="stat-label">{t(n.officeLocation ? "Where" : "Areas")}</span>
+                <p lang={where ? lang : undefined}>{where ?? t("Not stated in the notice")}</p>
                 {where && <Tag kind="notice" />}
               </div>
               <a className={`stat for-you ${v.tone}`} href="#household">
-                <span className="stat-label">For your family</span>
+                <span className="stat-label">{t("For your family")}</span>
                 <p>
-                  <strong>{v.title}</strong>
+                  <strong>{t(v.title)}</strong>
                 </p>
                 <span className="stat-sub">
-                  {v.sub} <Icon name="arrow" size="1em" />
+                  {t(v.sub)} <Icon name="arrow" size="1em" />
                 </span>
               </a>
             </div>
 
-            {n.dateText && <p className="as-written">As written in the notice: {n.dateText}</p>}
+            {n.dateText && <p className="as-written">{t("As written in the notice: {x}", { x: n.dateText })}</p>}
             <div className="actions">
               <ReadAloud
                 light
@@ -821,7 +850,7 @@ function Flow({
 
           {n.unresolved.length > 0 && (
             <Banner tone="warn" big>
-              <strong>Needs your confirmation</strong>
+              <strong>{t("Needs your confirmation")}</strong>
               <ul>
                 {n.unresolved.map((u) => (
                   <li key={u}>{u}</li>
@@ -832,11 +861,9 @@ function Flow({
 
           {n.category === "legal" && (
             <Banner tone="warn" big>
-              <strong>This is not legal advice.</strong>
+              <strong>{t("This is not legal advice.")}</strong>
               <br />
-              It explains what the document says, not whether it is correct or what you should do
-              about it. Speak to a lawyer or free legal aid before the deadline. See Helpful
-              contacts.
+              {t("It explains what the document says, not whether it is correct or what you should do about it. Speak to a lawyer or free legal aid before the deadline. See Helpful contacts.")}
             </Banner>
           )}
 
@@ -844,22 +871,22 @@ function Flow({
 
           <FinePrint notice={n} lang={lang} />
 
-          <Section id="todo" title="What to do" icon="list" tint="amber">
+          <Section id="todo" title={t("What to do")} icon="list" tint="amber">
             {n.requirements.length > 0 ? (
               <>
                 <h3>
-                  The notice asks you to <Tag kind="notice" />
+                  {t("The notice asks you to")} <Tag kind="notice" />
                 </h3>
                 <CheckList items={n.requirements} lang={lang} done={doneOfficial} setDone={setDoneOfficial} />
                 <Proof notice={n} fields={["requirements"]} />
               </>
             ) : (
-              <p>The notice does not ask you to do anything specific.</p>
+              <p>{t("The notice does not ask you to do anything specific.")}</p>
             )}
             {n.suggestions.length > 0 && (
               <>
                 <h3>
-                  You may also want to <Tag kind="ai" />
+                  {t("You may also want to")} <Tag kind="ai" />
                 </h3>
                 <CheckList items={n.suggestions} lang={lang} done={doneSuggested} setDone={setDoneSuggested} />
               </>
@@ -868,21 +895,21 @@ function Flow({
 
           {hasVisit && <VisitReadiness notice={n} lang={lang} have={have} setHave={setHave} />}
 
-          <Section id="reminder" title="Set a reminder" icon="calendar" tint="blue">
+          <Section id="reminder" title={t("Set a reminder")} icon="calendar" tint="blue">
             {saved && (
               <Banner tone="ok">
-                Saved reminder: <strong>{formatWhen(saved)}</strong>
+                {t("Saved reminder:")} <strong>{formatWhen(saved, lang)}</strong>
               </Banner>
             )}
             {saved && isIsoDate(date) && !savedIsCurrent && (
               <Banner tone="warn">
-                Your saved reminder shows the earlier date. Confirm the new date below to update it.
+                {t("Your saved reminder shows the earlier date. Confirm the new date below to update it.")}
               </Banner>
             )}
-            <p>Check the date against the notice, then approve. Nothing is saved before you approve.</p>
+            <p>{t("Check the date against the notice, then approve. Nothing is saved before you approve.")}</p>
             <div className="fields">
               <label className="field">
-                Date
+                {t("Date")}
                 <input
                   type="date"
                   value={date}
@@ -893,7 +920,7 @@ function Flow({
                 />
               </label>
               <label className="field">
-                From
+                {t("From")}
                 <input
                   type="time"
                   value={start}
@@ -904,7 +931,7 @@ function Flow({
                 />
               </label>
               <label className="field">
-                To
+                {t("To")}
                 <input
                   type="time"
                   value={end}
@@ -917,7 +944,7 @@ function Flow({
             </div>
             {!isIsoDate(date) && (
               <Banner tone="warn">
-                The date could not be read. Type it in from the notice to set a reminder.
+                {t("The date could not be read. Type it in from the notice to set a reminder.")}
               </Banner>
             )}
             <label className={`confirm${checked ? " on" : ""}`}>
@@ -927,19 +954,19 @@ function Flow({
                 disabled={!isIsoDate(date)}
                 onChange={(e) => setChecked(e.target.checked)}
               />
-              <span>I have checked this date and time against the notice</span>
+              <span>{t("I have checked this date and time against the notice")}</span>
             </label>
             <button className="wide" onClick={approve} disabled={!confirmed}>
               <Icon name="calendar" />
-              {saved ? "Approve and update reminder" : "Approve and download reminder"}
+              {saved ? t("Approve and update reminder") : t("Approve and download reminder")}
             </button>
-            <p className="muted">The reminder rings 12 hours before.</p>
+            <p className="muted">{t("The reminder rings 12 hours before.")}</p>
           </Section>
 
-          <Section id="family" title="Card for my family" icon="card" tint="pink">
+          <Section id="family" title={t("Card for my family")} icon="card" tint="pink">
             <div className="family-card" lang={lang}>
               <div className="family-head">
-                <span>{n.documentType ?? "Notice"}</span>
+                <span>{n.documentType ?? t("Notice")}</span>
                 <Icon name="share" />
               </div>
               <div className="family-body">
@@ -985,15 +1012,15 @@ function Flow({
             </div>
             <label className={`confirm${hidePersonal ? " on" : ""}`}>
               <input type="checkbox" checked={hidePersonal} onChange={(e) => setHidePersonal(e.target.checked)} />
-              <span>Hide names, account numbers and addresses</span>
+              <span>{t("Hide names, account numbers and addresses")}</span>
             </label>
-            <p className="muted">Read the card before you share it. Sharing happens only when you press a button.</p>
+            <p className="muted">{t("Read the card before you share it. Sharing happens only when you press a button.")}</p>
             <div className="actions">
               <button onClick={shareCard}>
-                <Icon name="share" /> Share card
+                <Icon name="share" /> {t("Share card")}
               </button>
               <button className="ghost" onClick={copyCard}>
-                <Icon name="copy" /> Copy text
+                <Icon name="copy" /> {t("Copy text")}
               </button>
               <ReadAloud text={cardText} language={lang} />
             </div>
@@ -1003,8 +1030,8 @@ function Flow({
         </div>
 
         <aside className="side">
-          <Section id="proof" title="Proof" icon="search" tint="amber">
-            <p className="muted">The facts as read, and your photo to check them against.</p>
+          <Section id="proof" title={t("Proof")} icon="search" tint="amber">
+            <p className="muted">{t("The facts as read, and your photo to check them against.")}</p>
             <div id="photo" tabIndex={-1}>
               <Photo image={result.image} />
             </div>
@@ -1013,7 +1040,7 @@ function Flow({
                 .filter((f) => f.value)
                 .map((f) => (
                   <li key={f.label}>
-                    <span className="eyebrow">{f.label}</span>
+                    <span className="eyebrow">{t(f.label)}</span>
                     <span>{f.value}</span> <Tag kind="notice" />
                     {f.fields.length > 0 && <Proof notice={n} fields={f.fields} />}
                   </li>
@@ -1021,8 +1048,8 @@ function Flow({
             </ul>
           </Section>
 
-          <Section id="external" title="Helpful contacts" icon="phone" tint="violet">
-            {helplines.length === 0 && <p>No matching public record was found for this notice.</p>}
+          <Section id="external" title={t("Helpful contacts")} icon="phone" tint="violet">
+            {helplines.length === 0 && <p>{t("No matching public record was found for this notice.")}</p>}
             {helplines.map((r) => (
               <div key={r.service} className="external">
                 <p>
@@ -1031,13 +1058,13 @@ function Flow({
                   {r.detail}
                 </p>
                 <p className="muted">
-                  Shown because: {r.matchRule}{" "}
-                  <a href={r.sourceUrl} target="_blank" rel="noreferrer">Source</a>, retrieved {r.retrieved}.
+                  {t("Shown because:")} {r.matchRule}{" "}
+                  <a href={r.sourceUrl} target="_blank" rel="noreferrer">{t("Source")}</a>, {t("retrieved {d}", { d: r.retrieved })}.
                 </p>
               </div>
             ))}
           </Section>
-          {result.model && <p className="muted center">Read by {result.model}</p>}
+          {result.model && <p className="muted center">{t("Read by {m}", { m: result.model })}</p>}
         </aside>
       </div>
 
@@ -1047,7 +1074,7 @@ function Flow({
             <Icon name="check" />
           </span>
           <p>{status}</p>
-          <button className="toast-close" aria-label="Dismiss message" onClick={() => setStatus("")}>
+          <button className="toast-close" aria-label={t("Dismiss message")} onClick={() => setStatus("")}>
             <Icon name="close" />
           </button>
         </div>
@@ -1091,6 +1118,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const busy = pending !== null;
+  const t = translator(language);
 
   async function onFile(file: File | undefined, slot: Slot) {
     if (!file || busy) return;
@@ -1125,7 +1153,7 @@ export default function Home() {
   }
 
   const current = thread ? (thread.revised ?? thread.original) : null;
-  const changes = thread?.revised ? compareNotices(thread.original.notice, thread.revised.notice) : null;
+  const changes = thread?.revised ? compareNotices(thread.original.notice, thread.revised.notice, t, language) : null;
   const updates = changes ? planUpdates(changes) : [];
   const fixture = current?.source === "fixture";
 
@@ -1158,22 +1186,23 @@ export default function Home() {
         <div className="beam" aria-hidden="true" />
       </div>
       <div>
-        <p className="scan-title">Gemma 4 is reading your notice…</p>
-        <p className="muted">This can take up to a minute. Please keep this page open.</p>
+        <p className="scan-title">{t("Gemma 4 is reading your notice…")}</p>
+        <p className="muted">{t("This can take up to a minute. Please keep this page open.")}</p>
       </div>
     </div>
   );
 
   return (
-    <div className="app" style={{ "--scale": scale } as CSSProperties}>
+    <LangContext.Provider value={language}>
+    <div className="app" lang={language} style={{ "--scale": scale } as CSSProperties}>
       <a className="skip" href="#start">
-        Skip to upload
+        {t("Skip to upload")}
       </a>
       <header className="topbar">
         <div className="topbar-in">
           {/* A full page load on purpose: it clears the notice on screen. */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a className="brand" href="/" aria-label="Notice to Action home">
+          <a className="brand" href="/" aria-label={t("Notice to Action home")}>
             <span className="mark" aria-hidden="true">
               <Icon name="arrow" />
             </span>
@@ -1181,18 +1210,18 @@ export default function Home() {
               Notice<span className="brand-arrow"> → </span>Action
             </span>
           </a>
-          <nav className="header-nav" aria-label="Main navigation">
-            <a href={thread ? "#result" : "#how-it-works"}>{thread ? "Your notice" : "How it works"}</a>
-            <span className="local-label">Made for everyday India</span>
+          <nav className="header-nav" aria-label={t("Main navigation")}>
+            <a href={thread ? "#result" : "#how-it-works"}>{thread ? t("Your notice") : t("How it works")}</a>
+            <span className="local-label">{t("Made for everyday India")}</span>
           </nav>
           <div className="controls">
-            <div role="group" aria-label="Text size" className="sizes">
+            <div role="group" aria-label={t("Text size")} className="sizes">
               {SCALES.map((s) => (
                 <button
                   key={s.value}
                   className={scale === s.value ? "on" : ""}
                   aria-pressed={scale === s.value}
-                  aria-label={s.name}
+                  aria-label={t(s.name)}
                   onClick={() => setScale(s.value)}
                 >
                   {s.label}
@@ -1200,7 +1229,7 @@ export default function Home() {
               ))}
             </div>
             <label className="lang">
-              <span className="sr">Explain in</span>
+              <span className="sr">{t("Explain in")}</span>
               <select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
                 {(Object.keys(LANGUAGES) as Language[]).map((l) => (
                   <option key={l} value={l}>
@@ -1232,91 +1261,89 @@ export default function Home() {
               }}
             >
               <div className="hero-text">
-                <p className="editorial-kicker"><span /> A little clarity. A lot less worry.</p>
+                <p className="editorial-kicker"><span /> {t("A little clarity. A lot less worry.")}</p>
                 <h1 id="hero-title">
-                  A notice arrives.<br /><em>Know what’s next.</em>
+                  {t("A notice arrives.")}<br /><em>{t("Know what’s next.")}</em>
                 </h1>
                 <p className="hero-sub">
-                  From water cuts to scholarship forms, turn official words into simple next steps. For you, and the people you look after.
+                  {t("From water cuts to scholarship forms, turn official words into simple next steps. For you, and the people you look after.")}
                 </p>
-                <div className="language-note"><span>ಕನ್ನಡ</span><span>हिन्दी</span><span>English</span><i>In a language that feels like home.</i></div>
-                <div className="hero-caption"><span className="caption-line" /><p>One photo. The details that matter.<br />You decide what happens next.</p></div>
+                <div className="language-note"><span>ಕನ್ನಡ</span><span>हिन्दी</span><span>English</span><i>{t("In a language that feels like home.")}</i></div>
+                <div className="hero-caption"><span className="caption-line" /><p>{t("One photo. The details that matter.")}<br />{t("You decide what happens next.")}</p></div>
               </div>
               <div className="upload-studio">
-                <div className="studio-top"><span>START WITH YOUR NOTICE</span><span>01 / 03</span></div>
+                <div className="studio-top"><span>{t("START WITH YOUR NOTICE")}</span><span>01 / 03</span></div>
                 <HeroArt />
-                <h2>Let’s make sense of it.</h2>
-                <p className="upload-description">Drop a photo here, or choose one below.</p>
+                <h2>{t("Let’s make sense of it.")}</h2>
+                <p className="upload-description">{t("Drop a photo here, or choose one below.")}</p>
                 {scanning || (
                   <>
                     <div className="actions cta">
-                      {picker("original", false, "Upload a notice", "primary")}
-                      {picker("original", true, "Use camera", "ghost")}
+                      {picker("original", false, t("Upload a notice"), "primary")}
+                      {picker("original", true, t("Use camera"), "ghost")}
                     </div>
                     <div className="samples">
-                      <span>Just looking? Try an example</span>
+                      <span>{t("Just looking? Try an example")}</span>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_WATER)}>
-                        Water cut
+                        {t("Water cut")}
                       </button>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_SCHOLARSHIP)}>
-                        Scholarship
+                        {t("Scholarship")}
                       </button>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_CIRCULAR)}>
-                        Govt circular
+                        {t("Govt circular")}
                       </button>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_LEGAL)}>
-                        Legal notice
+                        {t("Legal notice")}
                       </button>
                     </div>
                   </>
                 )}
-                <p className="upload-footnote"><Icon name="info" size="1em" /> Images are processed online. Use non-sensitive notices.</p>
+                <p className="upload-footnote"><Icon name="info" size="1em" /> {t("Images are processed online. Use non-sensitive notices.")}</p>
               </div>
             </section>
 
             {error && (
               <div role="alert">
-                <Banner tone="bad">{error}</Banner>
+                <Banner tone="bad">{t(error)}</Banner>
               </div>
             )}
 
-            <div id="how-it-works" className="section-intro"><p>FROM INFORMATION TO A LITTLE PEACE OF MIND</p><span>More than a translation.</span></div>
-            <section className="features" aria-label="What you get">
+            <div id="how-it-works" className="section-intro"><p>{t("FROM INFORMATION TO A LITTLE PEACE OF MIND")}</p><span>{t("More than a translation.")}</span></div>
+            <section className="features" aria-label={t("What you get")}>
               {FEATURES.map((f, i) => (
                 <div key={f.title} className={`feature tint-${f.tint}`}>
                   <div className="feature-top"><span className="feature-number">0{i + 1}</span><span className="badge">
                     <Icon name={f.icon} />
                   </span></div>
-                  <h3>{f.title}</h3>
-                  <p>{f.text}</p>
+                  <h3>{t(f.title)}</h3>
+                  <p>{t(f.text)}</p>
                 </div>
               ))}
             </section>
 
             <p className="privacy">
-              <Icon name="info" /> Your photo is sent to a hosted AI service (Gemma 4 through
-              OpenRouter) to be read, so do not upload private documents. Your household details and
-              reminders stay in this browser. This is not an official government service.
+              <Icon name="info" /> {t("Your photo is sent to a hosted AI service (Gemma 4 through OpenRouter) to be read, so do not upload private documents. Your household details and reminders stay in this browser. This is not an official government service.")}
             </p>
           </>
         ) : (
           <>
-            <section id="start" className="again" aria-label="Read another notice">
+            <section id="start" className="again" aria-label={t("Read another notice")}>
               {scanning && pending?.slot === "original" ? (
                 scanning
               ) : (
                 <>
-                  <strong>Read another notice</strong>
+                  <strong>{t("Read another notice")}</strong>
                   <div className="actions">
-                    {picker("original", true, "Take a photo", "small")}
-                    {picker("original", false, "Choose a photo", "ghost small")}
+                    {picker("original", true, t("Take a photo"), "small")}
+                    {picker("original", false, t("Choose a photo"), "ghost small")}
                   </div>
                 </>
               )}
             </section>
             {error && (
               <div role="alert">
-                <Banner tone="bad">{error}</Banner>
+                <Banner tone="bad">{t(error)}</Banner>
               </div>
             )}
           </>
@@ -1327,15 +1354,14 @@ export default function Home() {
             <div id="result" tabIndex={-1} className="result-anchor" />
             {fixture && (
               <Banner tone="bad">
-                <strong>Sample.</strong> This is a hand-written synthetic notice. It is not AI output
-                and not a real notice.
+                <strong>{t("Sample.")}</strong> {t("This is a hand-written synthetic notice. It is not AI output and not a real notice.")}
               </Banner>
             )}
 
             {changes && (
-              <Section id="changed" title="What changed?" icon="refresh" tint="amber" className="changed">
+              <Section id="changed" title={t("What changed?")} icon="refresh" tint="amber" className="changed">
                 {changes.length === 0 ? (
-                  <p>Nothing important changed: the date, time, areas, office and documents are the same.</p>
+                  <p>{t("Nothing important changed: the date, time, areas, office and documents are the same.")}</p>
                 ) : (
                   <>
                     <ul className="diff">
@@ -1344,14 +1370,14 @@ export default function Home() {
                           <span className="eyebrow">{c.label}</span>
                           <div className="diff-row">
                             <div className="diff-before">
-                              <span className="sr">Before: </span>
+                              <span className="sr">{t("Before:")} </span>
                               {c.before}
                             </div>
                             <span className="diff-arrow" aria-hidden="true">
                               <Icon name="arrow" />
                             </span>
                             <div className="diff-after">
-                              <span className="sr">Now: </span>
+                              <span className="sr">{t("Now:")} </span>
                               {c.after}
                             </div>
                           </div>
@@ -1362,16 +1388,14 @@ export default function Home() {
                     </ul>
                     {updates.length > 0 && (
                       <Banner tone="warn" big live>
-                        <strong>
-                          Your plan needs {updates.length} update{updates.length === 1 ? "" : "s"}
-                        </strong>
+                        <strong>{t("Your plan needs updating: {n}", { n: updates.length })}</strong>
                         <br />
-                        Check {updates.join(" and ")}.
+                        {t("Check:")} {updates.map((u) => t(u)).join(", ")}.
                       </Banner>
                     )}
                   </>
                 )}
-                <p className="muted">Everything below now shows the newer notice.</p>
+                <p className="muted">{t("Everything below now shows the newer notice.")}</p>
               </Section>
             )}
 
@@ -1390,18 +1414,17 @@ export default function Home() {
                 <span className="badge">
                   <Icon name="refresh" />
                 </span>
-                Got a corrected notice later?
+                {t("Got a corrected notice later?")}
               </h2>
               <p>
-                Add the newer notice here only if it replaces the one above. We will show what
-                changed and help you update your reminder.
+                {t("Add the newer notice here only if it replaces the one above. We will show what changed and help you update your reminder.")}
               </p>
               {scanning && pending?.slot === "revised" ? (
                 scanning
               ) : (
                 <div className="actions">
-                  {picker("revised", true, "Photo of the new notice")}
-                  {picker("revised", false, "Choose a photo", "ghost")}
+                  {picker("revised", true, t("Photo of the new notice"))}
+                  {picker("revised", false, t("Choose a photo"), "ghost")}
                   {thread.original.notice === FIXTURE_WATER && !thread.revised && (
                     <button
                       className="ghost"
@@ -1413,7 +1436,7 @@ export default function Home() {
                         showResult("result");
                       }}
                     >
-                      Sample corrected notice
+                      {t("Sample corrected notice")}
                     </button>
                   )}
                 </div>
@@ -1423,44 +1446,44 @@ export default function Home() {
         )}
 
         {reminders.length > 0 && (
-          <Section id="saved" title="My saved reminders" icon="calendar" tint="green">
+          <Section id="saved" title={t("My saved reminders")} icon="calendar" tint="green">
             <ul className="saved">
               {reminders.map((r) => (
                 <li key={r.threadId}>
-                  <DateTile date={r.date} language="en" />
+                  <DateTile date={r.date} language={language} />
                   <div>
                     <strong>{r.title}</strong>
                     <br />
-                    {formatWhen(r)}
-                    {r.sequence > 0 && <span className="muted"> (updated {r.sequence}×)</span>}
+                    {formatWhen(r, language)}
+                    {r.sequence > 0 && <span className="muted"> ({t("updated {n}×", { n: r.sequence })})</span>}
                   </div>
                   <button
                     className="ghost small"
-                    aria-label={`Remove reminder for ${r.title}`}
+                    aria-label={t("Remove reminder for {title}", { title: r.title })}
                     onClick={() => setReminders(reminders.filter((x) => x.threadId !== r.threadId))}
                   >
-                    Remove
+                    {t("Remove")}
                   </button>
                 </li>
               ))}
             </ul>
-            <p className="muted">Kept only in this browser. Removing one here does not change your calendar.</p>
+            <p className="muted">{t("Kept only in this browser. Removing one here does not change your calendar.")}</p>
           </Section>
         )}
       </main>
 
       <footer>
-        <div className="footer-wordmark">A little less confusion.<br /><em>A little more everyday confidence.</em></div>
+        <div className="footer-wordmark">{t("A little less confusion.")}<br /><em>{t("A little more everyday confidence.")}</em></div>
         <div className="footer-badges">
           <span>Gemma 4 · open-weight model</span>
           <span>Open source · MIT</span>
           <span>Hacktoberfest Hack Day Bengaluru ’26</span>
         </div>
         <p>
-          The AI can make mistakes, so always check the original notice. Not an official government
-          service.
+          {t("The AI can make mistakes, so always check the original notice. Not an official government service.")}
         </p>
       </footer>
     </div>
+    </LangContext.Provider>
   );
 }

@@ -1,4 +1,7 @@
+import { translator, type T } from "./i18n";
 import { LANGUAGES, isIsoDate, isTime, type Language, type Notice } from "./schema";
+
+const ENGLISH = translator("en");
 
 export type ConfirmedEvent = {
   date: string;
@@ -38,9 +41,9 @@ export function formatTime(time: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-function formatRange(start: string | null, end: string | null): string {
-  if (!start) return "no time stated";
-  return end ? `${formatTime(start)} to ${formatTime(end)}` : formatTime(start);
+function formatRange(start: string | null, end: string | null, t: T = ENGLISH): string {
+  if (!start) return t("no time stated");
+  return end ? `${formatTime(start)} – ${formatTime(end)}` : formatTime(start);
 }
 
 export function formatWhen(e: ConfirmedEvent, language: Language = "en"): string {
@@ -171,7 +174,11 @@ function areaListed(n: Notice, area: string): boolean {
 // Compares the notice's stated areas and conditions with the household
 // profile in plain code. It reports what it could and could not check and
 // never claims final eligibility.
-export function checkRelevance(n: Notice, p: Profile): { outcome: Outcome; checks: Check[] } {
+export function checkRelevance(
+  n: Notice,
+  p: Profile,
+  t: T = ENGLISH,
+): { outcome: Outcome; checks: Check[] } {
   const checks: Check[] = [];
   if (n.affectedAreas.length > 0) {
     const locality = p.locality.trim();
@@ -179,19 +186,22 @@ export function checkRelevance(n: Notice, p: Profile): { outcome: Outcome; check
       checks.push({
         outcome: "unknown",
         field: "affectedAreas",
-        reason: "Add your locality to check it against the areas in the notice.",
+        reason: t("Add your locality to check it against the areas in the notice."),
       });
     } else if (areaListed(n, locality)) {
       checks.push({
         outcome: "match",
         field: "affectedAreas",
-        reason: `"${locality}" is among the areas listed in the notice.`,
+        reason: t("“{x}” is among the areas listed in the notice.", { x: locality }),
       });
     } else {
       checks.push({
         outcome: "no-match",
         field: "affectedAreas",
-        reason: `"${locality}" was not found among the listed areas (${n.affectedAreas.join(", ")}). Spellings vary and notices often add "surrounding areas", so check the photo.`,
+        reason: t(
+          "“{x}” was not found among the listed areas ({areas}). Spellings vary and notices often add “surrounding areas”, so check the photo.",
+          { x: locality, areas: n.affectedAreas.join(", ") },
+        ),
       });
     }
   }
@@ -201,47 +211,43 @@ export function checkRelevance(n: Notice, p: Profile): { outcome: Outcome; check
       checks.push({
         outcome: "no-match",
         field: "issuer",
-        reason: "The notice is from BWSSB, and you said your water comes from another provider.",
+        reason: t("The notice is from BWSSB, and you said your water comes from another provider."),
       });
     } else if (fromBwssb && p.provider === "bwssb") {
       checks.push({
         outcome: "match",
         field: "issuer",
-        reason: "The notice is from BWSSB, your water provider.",
+        reason: t("The notice is from BWSSB, your water provider."),
       });
     }
   }
   for (const c of n.conditions) {
     const answer = c.requires === "student" ? p.student : c.requires === "senior_citizen" ? p.senior : null;
-    const who = c.requires === "student" ? "a student" : "a senior citizen";
     if (answer === null) {
       checks.push({
         outcome: "unknown",
         field: "conditions",
-        reason: `Cannot be checked automatically: ${c.text}`,
+        reason: t("Cannot be checked automatically: {c}", { c: c.text }),
       });
     } else if (answer === "") {
       checks.push({
         outcome: "unknown",
         field: "conditions",
-        reason: `Tell us whether your household has ${who} to check: ${c.text}`,
+        reason: t("Answer the household question below to check: {c}", { c: c.text }),
       });
     } else {
       checks.push({
         outcome: answer === "yes" ? "match" : "no-match",
         field: "conditions",
-        reason: `${c.text} You said your household ${answer === "yes" ? "has" : "does not have"} ${who}.`,
+        reason: t(answer === "yes" ? "{c} Your answer: yes." : "{c} Your answer: no.", { c: c.text }),
       });
     }
   }
-  const outcome: Outcome =
-    checks.length === 0 || checks.some((c) => c.outcome === "unknown")
-      ? checks.some((c) => c.outcome === "no-match")
-        ? "no-match"
-        : "unknown"
-      : checks.some((c) => c.outcome === "no-match")
-        ? "no-match"
-        : "match";
+  const outcome: Outcome = checks.some((c) => c.outcome === "no-match")
+    ? "no-match"
+    : checks.length === 0 || checks.some((c) => c.outcome === "unknown")
+      ? "unknown"
+      : "match";
   return { outcome, checks };
 }
 
@@ -263,6 +269,7 @@ export function buildCard(
   language: Language,
   hidePersonal: boolean,
 ): FamilyCard {
+  const t = translator(language);
   const hide = (s: string) => {
     if (!hidePersonal) return s;
     let out = s;
@@ -272,8 +279,8 @@ export function buildCard(
   const when = e
     ? formatWhen(e, language)
     : n.dateText
-      ? `${n.dateText} (as written, not yet confirmed)`
-      : "Not stated. Check the notice.";
+      ? `${n.dateText} ${t("(as written, not yet confirmed)")}`
+      : t("Not stated. Check the notice.");
   return {
     happened: hide(n.headline || n.explanation),
     when: hide(when),
@@ -286,7 +293,7 @@ export function buildCard(
     suggested: n.suggestions.map(hide),
     source: hide(
       [n.issuer, n.referenceNumber ? `ref. ${n.referenceNumber}` : ""].filter(Boolean).join(", ") ||
-        "Issuer not stated",
+        t("Issuer not stated"),
     ),
     madeOn: formatDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }), language),
   };
@@ -299,6 +306,7 @@ export type Change = {
   label: string;
   before: string;
   after: string;
+  // An extra remark, or "" when the before and after boxes say it all.
   sentence: string;
   planUpdate: string | null;
 };
@@ -312,36 +320,43 @@ function listDiff(a: string[], b: string[]) {
   };
 }
 
-export function compareNotices(a: Notice, b: Notice): Change[] {
+export function compareNotices(
+  a: Notice,
+  b: Notice,
+  t: T = ENGLISH,
+  language: Language = "en",
+): Change[] {
   const changes: Change[] = [];
   const differs = (x: string | null, y: string | null) => norm(x ?? "") !== norm(y ?? "");
-  const label = b.dateKind === "deadline" ? "deadline" : "date";
+  const stated = (x: string | null) => x ?? t("Not stated");
+  const listed = (key: string, items: string[], none: string) =>
+    items.length ? t(key, { x: items.join(", ") }) : t(none);
 
   if (differs(a.eventDate, b.eventDate)) {
-    let sentence: string;
-    if (isIsoDate(a.eventDate) && isIsoDate(b.eventDate)) {
-      const days = Math.round((Date.parse(b.eventDate) - Date.parse(a.eventDate)) / 86_400_000);
-      const n = Math.abs(days);
-      sentence = `The ${label} moved ${days > 0 ? "later" : "earlier"} by ${n} day${n === 1 ? "" : "s"}: ${formatDate(a.eventDate)} → ${formatDate(b.eventDate)}.`;
-    } else {
-      sentence = `The ${label} changed: ${a.eventDate ?? "not readable"} → ${b.eventDate ?? "not readable"}.`;
-    }
+    const both = isIsoDate(a.eventDate) && isIsoDate(b.eventDate);
+    const days = both
+      ? Math.round((Date.parse(b.eventDate!) - Date.parse(a.eventDate!)) / 86_400_000)
+      : 0;
     changes.push({
       field: "date",
-      label: b.dateKind === "deadline" ? "Deadline" : "Date",
-      before: isIsoDate(a.eventDate) ? formatDate(a.eventDate) : "Not readable",
-      after: isIsoDate(b.eventDate) ? formatDate(b.eventDate) : "Not readable",
-      sentence,
+      label: t(b.dateKind === "deadline" ? "Deadline" : "Date"),
+      before: isIsoDate(a.eventDate) ? formatDate(a.eventDate, language) : t("Not readable"),
+      after: isIsoDate(b.eventDate) ? formatDate(b.eventDate, language) : t("Not readable"),
+      sentence: both
+        ? t(days > 0 ? "Moved later by {n} day(s)." : "Moved earlier by {n} day(s).", {
+            n: Math.abs(days),
+          })
+        : "",
       planUpdate: "your reminder",
     });
   }
   if (differs(a.startTime, b.startTime) || differs(a.endTime, b.endTime)) {
     changes.push({
       field: "time",
-      label: "Time",
-      before: formatRange(a.startTime, a.endTime),
-      after: formatRange(b.startTime, b.endTime),
-      sentence: `The time changed: ${formatRange(a.startTime, a.endTime)} → ${formatRange(b.startTime, b.endTime)}.`,
+      label: t("Time"),
+      before: formatRange(a.startTime, a.endTime, t),
+      after: formatRange(b.startTime, b.endTime, t),
+      sentence: "",
       planUpdate: "your reminder",
     });
   }
@@ -349,35 +364,30 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (areas.added.length || areas.removed.length) {
     changes.push({
       field: "affectedAreas",
-      label: "Areas",
-      before: areas.removed.length ? `No longer listed: ${areas.removed.join(", ")}` : "Nothing removed",
-      after: areas.added.length ? `Newly listed: ${areas.added.join(", ")}` : "Nothing added",
-      sentence: [
-        areas.added.length ? `Areas added: ${areas.added.join(", ")}.` : "",
-        areas.removed.length ? `Areas removed: ${areas.removed.join(", ")}.` : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
+      label: t("Areas"),
+      before: listed("No longer listed: {x}", areas.removed, "Nothing removed"),
+      after: listed("Newly listed: {x}", areas.added, "Nothing added"),
+      sentence: "",
       planUpdate: "whether it affects your household",
     });
   }
   if (differs(a.officeLocation, b.officeLocation)) {
     changes.push({
       field: "office",
-      label: "Office",
-      before: a.officeLocation ?? "Not stated",
-      after: b.officeLocation ?? "Not stated",
-      sentence: `The office location changed: ${a.officeLocation ?? "not stated"} → ${b.officeLocation ?? "not stated"}.`,
+      label: t("Office"),
+      before: stated(a.officeLocation),
+      after: stated(b.officeLocation),
+      sentence: "",
       planUpdate: "where to go",
     });
   }
   if (differs(a.amount, b.amount)) {
     changes.push({
       field: "amount",
-      label: "Amount",
-      before: a.amount ?? "Not stated",
-      after: b.amount ?? "Not stated",
-      sentence: `The amount changed: ${a.amount ?? "not stated"} → ${b.amount ?? "not stated"}.`,
+      label: t("Amount"),
+      before: stated(a.amount),
+      after: stated(b.amount),
+      sentence: "",
       planUpdate: null,
     });
   }
@@ -385,31 +395,27 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (docs.added.length || docs.removed.length) {
     changes.push({
       field: "documents",
-      label: "Documents",
-      before: docs.removed.length ? `No longer listed: ${docs.removed.join(", ")}` : "Nothing removed",
-      after: docs.added.length ? `Newly listed: ${docs.added.join(", ")}` : "Nothing added",
-      sentence: [
-        docs.added.length ? `Documents added: ${docs.added.join(", ")}.` : "",
-        docs.removed.length ? `Documents no longer listed: ${docs.removed.join(", ")}.` : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
+      label: t("Documents"),
+      before: listed("No longer listed: {x}", docs.removed, "Nothing removed"),
+      after: listed("Newly listed: {x}", docs.added, "Nothing added"),
+      sentence: "",
       planUpdate: "the documents to carry",
     });
   }
   if (differs(a.issuer, b.issuer)) {
     changes.push({
       field: "issuer",
-      label: "Issuer",
-      before: a.issuer ?? "Not stated",
-      after: b.issuer ?? "Not stated",
-      sentence: `The issuer reads differently: ${a.issuer ?? "not stated"} → ${b.issuer ?? "not stated"}. Check that this notice really replaces the earlier one.`,
+      label: t("Issuer"),
+      before: stated(a.issuer),
+      after: stated(b.issuer),
+      sentence: t("Check that this notice really replaces the earlier one."),
       planUpdate: null,
     });
   }
   return changes;
 }
 
+// English keys for the parts of the plan a change touches; translate when shown.
 export function planUpdates(changes: Change[]): string[] {
   return [...new Set(changes.flatMap((c) => (c.planUpdate ? [c.planUpdate] : [])))];
 }

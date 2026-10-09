@@ -29,7 +29,7 @@ Built for Hacktoberfest Hack Day Bengaluru '26 (PS 01, Multimodal Community Inte
 - High-contrast colours in light and dark mode. Status is never shown by colour alone.
 - Keyboard and screen-reader support: labelled fields, visible focus, live status messages, and language tags on Kannada and Hindi text.
 
-The interface labels are in English. Only the explanation, checklist and family card are in the chosen language.
+The whole interface switches between English, Kannada and Hindi with the language picker, and the choice is remembered. Text the model writes (explanation, checklist, family card) is in the language chosen when the photo was read. The built-in samples, the external contact records and server error messages stay in English.
 
 ## Model
 
@@ -72,7 +72,7 @@ OPENROUTER_MODEL=google/gemma-4-31b-it:free
 | `lib/prompt.ts` | Prompts; text inside the notice is treated as data, not instructions |
 | `lib/actions.ts` | Household check, calendar file, saved reminders, family card, revision comparison |
 | `lib/data.ts` | Hand-maintained public records and the synthetic samples |
-| `lib/i18n.ts` | Family card labels in three languages |
+| `lib/i18n.ts` | Interface text and family card labels in English, Kannada and Hindi |
 | `lib/store.ts` | Browser local storage hook |
 | `app/page.tsx` | The single page |
 | `app/icons.tsx` | Inline SVG icons |
@@ -82,7 +82,7 @@ Key dependencies: Next.js, React, Zod.
 ## Limitations
 
 - The model can misread a notice. "Show me where" passages are the model's own transcription, not a highlighted region of the image, so compare them with the photo.
-- Kannada and Hindi output, including the family card labels, has not been reviewed by a fluent reader.
+- Kannada and Hindi text, both the interface translations in `lib/i18n.ts` and what the model writes, has not been reviewed by a fluent reader.
 - The household check is a plain comparison. Area matching misses spelling differences and "surrounding areas"; conditions other than student or senior citizen are reported as "cannot be checked". It never decides eligibility.
 - Personal details are hidden using what the model listed plus long digit runs. Read the card before sharing.
 - External records for BWSSB (helpline 1916, head office address) come from third-party pages, not BWSSB's own site, and no opening hours are held. The NALSA helpline (15100) is taken from nalsa.gov.in.
