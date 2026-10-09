@@ -112,6 +112,22 @@ While the OAuth consent screen is in "Testing" mode, only the test users you lis
 
 "Try an example" loads a hand-written water-cut notice (with a corrected version), scholarship notice, government circular or legal notice. Samples are labelled on screen and never pass through the model.
 
+## Deploying on Vercel
+
+The repository deploys as a standard Next.js project. Set these environment variables in the Vercel project, then redeploy:
+
+| Variable | Needed for |
+|---|---|
+| `GEMINI_API_KEY` | Reading notices, questions, highlights, search |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in and "Add to Google Calendar" (optional) |
+| `APP_URL` | The site's public address, for example `https://your-project.vercel.app` (needed with Google sign-in) |
+
+For Google sign-in, also add `https://your-project.vercel.app/api/auth/google/callback` to the OAuth client's authorised redirect URIs.
+
+**Accounts are temporary on Vercel.** The app keeps accounts, saved notices and shared library entries in a SQLite file. On Vercel that file lives in `/tmp`, which is not shared between server instances and is wiped when an instance is recycled, so sign-ins and saved notices can disappear without warning. Reading a notice, highlights, the reminder and the family card do not depend on it. Keeping accounts on Vercel needs a hosted database instead.
+
+Vercel also limits a request to about 4.5 MB. The browser shrinks the photo and its two enlarged halves before upload to stay under that.
+
 ## How it works
 
 | File | Role |

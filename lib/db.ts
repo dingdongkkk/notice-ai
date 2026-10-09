@@ -9,7 +9,10 @@ let db: DatabaseSync | null = null;
 
 export function database(): DatabaseSync {
   if (db) return db;
-  const dir = join(process.cwd(), "data");
+  // On Vercel only /tmp can be written to, and it is neither shared between
+  // server instances nor kept for long. Accounts and saved notices there are
+  // temporary; a hosted database is needed to keep them.
+  const dir = process.env.VERCEL ? "/tmp/notice-to-action" : join(process.cwd(), "data");
   mkdirSync(dir, { recursive: true });
   db = new DatabaseSync(join(dir, "app.db"));
   db.exec(`

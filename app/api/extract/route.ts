@@ -37,13 +37,14 @@ function toNotice(content: string): Notice {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const image: unknown = body?.image;
-  const sourceImage: unknown = body?.sourceImage;
+  // The untouched original file, sent only when it is small. Optional.
+  const sourceImage: string | null = typeof body?.sourceImage === "string" ? body.sourceImage : null;
   const language = toLanguage(body?.language);
   if (typeof image !== "string" || !IMAGE_URL.test(image)) {
     return fail("Upload a JPEG, PNG or WebP photo of the notice.", 400);
   }
-  if (typeof sourceImage !== "string" || sourceImage.length > MAX_IMAGE_CHARS ||
-      !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(sourceImage)) {
+  if (sourceImage !== null && (sourceImage.length > MAX_IMAGE_CHARS ||
+      !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(sourceImage))) {
     return fail("That image is too large or could not be read. Try a smaller photo.", 413);
   }
   // Optional enlargements of parts of the same photo, to help with small print.
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
         .filter((t: unknown): t is string => typeof t === "string" && IMAGE_URL.test(t))
         .slice(0, 2)
     : [];
-  if (image.length + tiles.join("").length + sourceImage.length > MAX_IMAGE_CHARS * 2) {
+  if (image.length + tiles.join("").length + (sourceImage?.length ?? 0) > MAX_IMAGE_CHARS * 2) {
     return fail("That image is too large. Try a smaller photo.", 413);
   }
 

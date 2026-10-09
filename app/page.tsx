@@ -91,11 +91,16 @@ async function toTiles(file: File): Promise<string[]> {
     canvas
       .getContext("2d")!
       .drawImage(bitmap, 0, top, bitmap.width, height, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.88);
+    return canvas.toDataURL("image/jpeg", 0.8);
   });
 }
 
-async function extract(image: string, tiles: string[], language: Language, sourceImage: string): Promise<Result> {
+async function extract(
+  image: string,
+  tiles: string[],
+  language: Language,
+  sourceImage: string | null,
+): Promise<Result> {
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1356,9 +1361,11 @@ export default function Home() {
       const image = await toDataUrl(file);
       setPending({ slot, image });
       const tiles = await toTiles(file);
-      const sourceImage = /^(image\/(jpeg|png|webp))$/i.test(file.type)
+      // The original file is only sent when it is small. Hosted servers cap
+      // the size of a request, and a phone photo alone can exceed that cap.
+      const sourceImage = file.size <= 300_000 && /^(image\/(jpeg|png|webp))$/i.test(file.type)
         ? await originalDataUrl(file)
-        : image;
+        : null;
       const result = await extract(image, tiles, language, sourceImage);
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
