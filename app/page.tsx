@@ -35,6 +35,9 @@ type Result = {
   model?: string;
 };
 type Thread = { id: string; original: Result; revised: Result | null };
+type Slot = "original" | "revised";
+type Tone = "ok" | "warn" | "bad";
+type Tint = "blue" | "green" | "amber" | "violet" | "pink";
 
 const NO_REMINDERS: SavedReminder[] = [];
 const SCALES = [
@@ -54,9 +57,7 @@ async function toDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.88);
 }
 
-async function extract(file: File, language: Language): Promise<Result> {
-  if (!file.type.startsWith("image/")) throw new Error("Please choose a photo of the notice.");
-  const image = await toDataUrl(file);
+async function extract(image: string, language: Language): Promise<Result> {
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -103,7 +104,7 @@ function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
   const quotes = notice.evidence.filter((e) => fields.includes(e.field));
   return (
     <div className="proof">
-      <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button className="proof-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="search" size="1.05em" />
         {open ? "Hide proof" : "Show me where"}
       </button>
@@ -113,9 +114,12 @@ function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
             <p>The AI gave no passage for this. Please check the photo yourself.</p>
           ) : (
             quotes.map((q, i) => (
-              <blockquote key={i} lang={notice.originalLanguage === "Kannada" ? "kn" : undefined}>
-                {q.quote}
-              </blockquote>
+              <figure key={i} className="snippet">
+                <figcaption>From the notice</figcaption>
+                <blockquote lang={notice.originalLanguage === "Kannada" ? "kn" : undefined}>
+                  <mark>{q.quote}</mark>
+                </blockquote>
+              </figure>
             ))
           )}
           <p className="muted">
@@ -127,7 +131,7 @@ function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
   );
 }
 
-function ReadAloud({ text, language }: { text: string; language: Language }) {
+function ReadAloud({ text, language, light = false }: { text: string; language: Language; light?: boolean }) {
   const [state, setState] = useState<"idle" | "speaking" | "unavailable">("idle");
   function toggle() {
     if (!("speechSynthesis" in window)) return setState("unavailable");
@@ -149,7 +153,7 @@ function ReadAloud({ text, language }: { text: string; language: Language }) {
   }
   return (
     <>
-      <button className="ghost" onClick={toggle}>
+      <button className={light ? "on-dark" : "ghost"} onClick={toggle}>
         <Icon name={state === "speaking" ? "stop" : "speaker"} />
         {state === "speaking" ? "Stop reading" : "Read aloud"}
       </button>
@@ -166,17 +170,19 @@ function Section({
   id,
   title,
   icon,
+  tint = "blue",
   className = "",
   children,
 }: {
   id: string;
   title: string;
   icon: IconName;
+  tint?: Tint;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={`card ${className}`} aria-labelledby={id}>
+    <section className={`card tint-${tint} ${className}`} aria-labelledby={id}>
       <h2 id={id} className="section-title">
         <span className="badge">
           <Icon name={icon} />
@@ -194,14 +200,16 @@ function Banner({
   live = false,
   children,
 }: {
-  tone: "ok" | "warn" | "bad";
+  tone: Tone;
   big?: boolean;
   live?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className={`banner ${tone}${big ? " big" : ""}`} role={live ? "status" : undefined}>
-      <Icon name={tone === "ok" ? "check" : tone === "warn" ? "info" : "alert"} />
+      <span className="banner-icon">
+        <Icon name={tone === "ok" ? "check" : tone === "warn" ? "info" : "alert"} />
+      </span>
       <div>{children}</div>
     </div>
   );
@@ -257,6 +265,21 @@ const OUTCOME_LABEL: Record<Outcome, string> = {
   unknown: "Need more information",
 };
 
+// A match on a water cut is bad news; a match on a scholarship is good news.
+function verdict(n: Notice, outcome: Outcome): { title: string; sub: string; tone: Tone } {
+  if (outcome === "unknown") {
+    return { title: "Not checked yet", sub: "Add your details below", tone: "warn" };
+  }
+  if (n.category === "scholarship") {
+    return outcome === "match"
+      ? { title: "Looks like a match", sub: "Your household meets what is stated", tone: "ok" }
+      : { title: "May not match", sub: "A stated condition is not met", tone: "bad" };
+  }
+  return outcome === "match"
+    ? { title: "This affects you", sub: "It matches your household details", tone: "bad" }
+    : { title: "May not affect you", sub: "It doesn't match your details", tone: "ok" };
+}
+
 function Household({
   notice,
   profile,
@@ -267,26 +290,13 @@ function Household({
   setProfile: (p: Profile) => void;
 }) {
   const { outcome, checks } = checkRelevance(notice, profile);
-  const scholarship = notice.category === "scholarship";
-  // A match on a water cut is bad news; a match on a scholarship is good news.
-  const tone =
-    outcome === "unknown" ? "warn" : (outcome === "match") === scholarship ? "ok" : "bad";
+  const v = verdict(notice, outcome);
   return (
-    <Section id="household" title="Does this affect my family?" icon="home">
-      <Banner tone={tone} big live>
+    <Section id="household" title="Does this affect my family?" icon="home" tint="green">
+      <Banner tone={v.tone} big live>
         <strong>{OUTCOME_LABEL[outcome]}</strong>
-        {outcome !== "unknown" && (
-          <>
-            <br />
-            {scholarship
-              ? outcome === "match"
-                ? "Your household appears to meet what the notice asks."
-                : "Your household may not meet what the notice asks."
-              : outcome === "match"
-                ? "This is likely to affect your household."
-                : "This may not affect your household."}
-          </>
-        )}
+        <br />
+        {v.title}. {v.sub}.
       </Banner>
       {checks.length === 0 ? (
         <p>The notice states no areas or conditions that can be checked.</p>
@@ -294,7 +304,9 @@ function Household({
         <ul className="reasons">
           {checks.map((c, i) => (
             <li key={i}>
-              <span className={`dot ${c.outcome}`} aria-hidden="true" />
+              <span className={`dot ${c.outcome}`} aria-hidden="true">
+                <Icon name={c.outcome === "match" ? "check" : c.outcome === "no-match" ? "close" : "info"} size="0.9em" />
+              </span>
               <div>
                 <p>{c.reason}</p>
                 <Proof notice={notice} fields={[c.field]} />
@@ -376,28 +388,41 @@ function CheckList({
   );
 }
 
-function VisitReadiness({ notice, lang }: { notice: Notice; lang: Language }) {
-  const [have, setHave] = useState<string[]>([]);
+function VisitReadiness({
+  notice,
+  lang,
+  have,
+  setHave,
+}: {
+  notice: Notice;
+  lang: Language;
+  have: string[];
+  setHave: (h: string[]) => void;
+}) {
   const offices = findRecords(notice).filter((r) => r.kind === "office");
   const docs = notice.documentsRequired;
   const missing = docs.length - have.length;
   return (
-    <Section id="visit" title="Before you leave home" icon="bag">
+    <Section id="visit" title="Before you leave home" icon="bag" tint="violet">
       {docs.length > 0 && (
         <>
           <h3>
             Documents to carry <Tag kind="notice" />
           </h3>
-          <p className="muted">Tick each one you already have.</p>
-          <div
-            className="meter"
-            role="progressbar"
-            aria-label="Documents collected"
-            aria-valuemin={0}
-            aria-valuemax={docs.length}
-            aria-valuenow={have.length}
-          >
-            <span style={{ width: `${(have.length / docs.length) * 100}%` }} />
+          <div className="meter-row">
+            <div
+              className="meter"
+              role="progressbar"
+              aria-label="Documents collected"
+              aria-valuemin={0}
+              aria-valuemax={docs.length}
+              aria-valuenow={have.length}
+            >
+              <span style={{ width: `${(have.length / docs.length) * 100}%` }} />
+            </div>
+            <strong>
+              {have.length}/{docs.length}
+            </strong>
           </div>
           <CheckList items={docs} lang={lang} done={have} setDone={setHave} />
           <Banner tone={missing === 0 ? "ok" : "warn"} live>
@@ -468,10 +493,10 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
     }
   }
   return (
-    <Section id="ask" title="Ask about this notice" icon="chat">
-      <form onSubmit={ask}>
+    <Section id="ask" title="Ask about this notice" icon="chat" tint="blue">
+      <form onSubmit={ask} className="ask">
         <label className="field">
-          Your question
+          <span className="sr">Your question</span>
           <input
             type="text"
             value={question}
@@ -491,8 +516,8 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
         </div>
       )}
       {answer && (
-        <div role="status">
-          <blockquote lang={language}>{answer}</blockquote>
+        <div role="status" className="answer-bubble">
+          <p lang={language}>{answer}</p>
           <p className="muted">
             Answered by Gemma 4 using only the facts read from the notice. It can be wrong.
           </p>
@@ -552,12 +577,15 @@ function Flow({
   const [status, setStatus] = useState("");
   const [doneOfficial, setDoneOfficial] = useState<string[]>([]);
   const [doneSuggested, setDoneSuggested] = useState<string[]>([]);
+  const [have, setHave] = useState<string[]>([]);
+  const [shared, setShared] = useState(false);
 
   const confirmed: ConfirmedEvent | null =
     checked && isIsoDate(date)
       ? { date, startTime: isTime(start) ? start : null, endTime: isTime(end) ? end : null }
       : null;
   const saved = reminders.find((r) => r.threadId === thread.id) ?? null;
+  const savedIsCurrent = !!saved && saved.date === date && (saved.startTime ?? "") === start;
   const helplines = findRecords(n).filter((r) => r.kind === "helpline");
   const hasVisit = n.documentsRequired.length > 0 || !!n.officeLocation;
   const dateLabel = n.dateKind === "deadline" ? "Deadline" : "When";
@@ -566,6 +594,14 @@ function Flow({
     ? formatWhen(confirmed, lang)
     : n.eventDate
       ? formatWhen({ date: n.eventDate, startTime: n.startTime, endTime: n.endTime }, lang)
+      : null;
+  const { outcome } = checkRelevance(n, profile);
+  const v = verdict(n, outcome);
+  const where = n.officeLocation
+    ? n.officeLocation
+    : n.affectedAreas.length
+      ? n.affectedAreas.slice(0, 3).join(", ") +
+        (n.affectedAreas.length > 3 ? ` and ${n.affectedAreas.length - 3} more` : "")
       : null;
 
   const card = buildCard(n, confirmed, lang, hidePersonal);
@@ -604,6 +640,7 @@ function Flow({
   async function copyCard() {
     try {
       await navigator.clipboard.writeText(cardText);
+      setShared(true);
       setStatus("Card copied. Paste it into a message to share it.");
     } catch {
       setStatus("Could not copy automatically. Please select the text and copy it.");
@@ -614,6 +651,7 @@ function Flow({
     if (!navigator.share) return copyCard();
     try {
       await navigator.share({ text: cardText });
+      setShared(true);
     } catch {}
   }
 
@@ -624,69 +662,115 @@ function Flow({
     { label: "Reference", value: n.referenceNumber, fields: [] },
   ];
 
-  const jumps: [string, string][] = [
-    ["answer", "Summary"],
-    ["household", "My family"],
-    ["todo", "To do"],
-    ...(hasVisit ? ([["visit", "Visit"]] as [string, string][]) : []),
-    ["reminder", "Reminder"],
-    ["family", "Family card"],
-    ["proof", "Proof"],
+  const steps: { id: string; label: string; done: boolean }[] = [
+    { id: "answer", label: "Understand", done: true },
+    { id: "household", label: "My family", done: outcome !== "unknown" },
+    {
+      id: "todo",
+      label: "To do",
+      done: n.requirements.length > 0 && doneOfficial.length === n.requirements.length,
+    },
+    ...(hasVisit
+      ? [
+          {
+            id: "visit",
+            label: "Visit",
+            done: n.documentsRequired.length > 0 && have.length === n.documentsRequired.length,
+          },
+        ]
+      : []),
+    { id: "reminder", label: "Reminder", done: savedIsCurrent },
+    { id: "family", label: "Share", done: shared },
   ];
+  const doneCount = steps.filter((s) => s.done).length;
 
   return (
     <>
-      <nav className="jump" aria-label="Sections of this notice">
-        {jumps.map(([id, label]) => (
-          <a key={id} href={`#${id}`}>
-            {label}
-          </a>
-        ))}
+      <nav className="stepper" aria-label="Your plan for this notice">
+        <span className="stepper-count">
+          {doneCount}/{steps.length}
+        </span>
+        <ol>
+          {steps.map((s, i) => (
+            <li key={s.id} className={s.done ? "done" : ""}>
+              <a href={`#${s.id}`}>
+                <span className="stepper-dot" aria-hidden="true">
+                  {s.done ? <Icon name="check" size="0.9em" /> : i + 1}
+                </span>
+                {s.label}
+                <span className="sr">{s.done ? " (done)" : " (to do)"}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
       </nav>
 
-      <div className="layout">
+      <div className="layout reveal">
         <div className="col">
-          <section className="card answer" aria-labelledby="answer">
-            <p className="eyebrow">{n.documentType ?? "Notice"}</p>
+          <section className="verdict" aria-labelledby="answer">
+            <div className="verdict-chips">
+              <span>{n.documentType ?? "Notice"}</span>
+              {n.issuer && <span>{n.issuer}</span>}
+            </div>
             <h2 id="answer" lang={lang}>
               {n.headline ?? n.title ?? "Here is what the notice says"}
             </h2>
-            <div className="when">
-              <DateTile date={shownDate} language={lang} />
-              <div>
-                <span className="eyebrow">{dateLabel}</span>
-                <p className="when-text" lang={whenText ? lang : undefined}>
-                  {whenText ?? "Not readable. Please check the notice."}
-                </p>
-                <Tag kind={n.eventDate && n.unresolved.length === 0 ? "notice" : "confirm"} />
-                {n.dateText && <p className="muted">As written: {n.dateText}</p>}
-              </div>
-            </div>
-            <Proof notice={n} fields={["date", "time"]} />
             <p className="lead" lang={lang}>
               {n.explanation}
             </p>
+
+            <div className="stats">
+              <div className="stat">
+                <span className="stat-label">{dateLabel}</span>
+                <div className="stat-when">
+                  <DateTile date={shownDate} language={lang} />
+                  <p lang={whenText ? lang : undefined}>
+                    {whenText ?? "Not readable. Please check the notice."}
+                  </p>
+                </div>
+                <Tag kind={n.eventDate && n.unresolved.length === 0 ? "notice" : "confirm"} />
+              </div>
+              <div className="stat">
+                <span className="stat-label">{n.officeLocation ? "Where" : "Areas"}</span>
+                <p lang={where ? lang : undefined}>{where ?? "Not stated in the notice"}</p>
+                {where && <Tag kind="notice" />}
+              </div>
+              <a className={`stat for-you ${v.tone}`} href="#household">
+                <span className="stat-label">For your family</span>
+                <p>
+                  <strong>{v.title}</strong>
+                </p>
+                <span className="stat-sub">
+                  {v.sub} <Icon name="arrow" size="1em" />
+                </span>
+              </a>
+            </div>
+
+            {n.dateText && <p className="as-written">As written in the notice: {n.dateText}</p>}
             <div className="actions">
               <ReadAloud
+                light
                 text={[n.headline, n.explanation, ...n.requirements].filter(Boolean).join(". ")}
                 language={lang}
               />
             </div>
-            {n.unresolved.length > 0 && (
-              <Banner tone="warn">
-                <strong>Needs your confirmation</strong>
-                <ul>
-                  {n.unresolved.map((u) => (
-                    <li key={u}>{u}</li>
-                  ))}
-                </ul>
-              </Banner>
-            )}
+            <Proof notice={n} fields={["date", "time"]} />
           </section>
+
+          {n.unresolved.length > 0 && (
+            <Banner tone="warn" big>
+              <strong>Needs your confirmation</strong>
+              <ul>
+                {n.unresolved.map((u) => (
+                  <li key={u}>{u}</li>
+                ))}
+              </ul>
+            </Banner>
+          )}
 
           <Household notice={n} profile={profile} setProfile={setProfile} />
 
-          <Section id="todo" title="What to do" icon="list">
+          <Section id="todo" title="What to do" icon="list" tint="amber">
             {n.requirements.length > 0 ? (
               <>
                 <h3>
@@ -708,15 +792,15 @@ function Flow({
             )}
           </Section>
 
-          {hasVisit && <VisitReadiness notice={n} lang={lang} />}
+          {hasVisit && <VisitReadiness notice={n} lang={lang} have={have} setHave={setHave} />}
 
-          <Section id="reminder" title="Set a reminder" icon="calendar">
+          <Section id="reminder" title="Set a reminder" icon="calendar" tint="blue">
             {saved && (
               <Banner tone="ok">
                 Saved reminder: <strong>{formatWhen(saved)}</strong>
               </Banner>
             )}
-            {saved && isIsoDate(date) && (saved.date !== date || (saved.startTime ?? "") !== start) && (
+            {saved && isIsoDate(date) && !savedIsCurrent && (
               <Banner tone="warn">
                 Your saved reminder shows the earlier date. Confirm the new date below to update it.
               </Banner>
@@ -778,9 +862,12 @@ function Flow({
             <p className="muted">The reminder rings 12 hours before.</p>
           </Section>
 
-          <Section id="family" title="Card for my family" icon="card">
+          <Section id="family" title="Card for my family" icon="card" tint="pink">
             <div className="family-card" lang={lang}>
-              <div className="family-head">{n.documentType ?? "Notice"}</div>
+              <div className="family-head">
+                <span>{n.documentType ?? "Notice"}</span>
+                <Icon name="share" />
+              </div>
               <div className="family-body">
                 <h3>{L.happened}</h3>
                 <p>{card.happened}</p>
@@ -842,8 +929,11 @@ function Flow({
         </div>
 
         <aside className="side">
-          <Section id="proof" title="Proof" icon="search">
+          <Section id="proof" title="Proof" icon="search" tint="amber">
             <p className="muted">The facts as read, and your photo to check them against.</p>
+            <div id="photo" tabIndex={-1}>
+              <Photo image={result.image} />
+            </div>
             <ul className="facts">
               {facts
                 .filter((f) => f.value)
@@ -855,12 +945,9 @@ function Flow({
                   </li>
                 ))}
             </ul>
-            <div id="photo" tabIndex={-1}>
-              <Photo image={result.image} />
-            </div>
           </Section>
 
-          <Section id="external" title="Helpful contacts" icon="phone">
+          <Section id="external" title="Helpful contacts" icon="phone" tint="violet">
             {helplines.length === 0 && <p>No matching public record was found for this notice.</p>}
             {helplines.map((r) => (
               <div key={r.service} className="external">
@@ -882,9 +969,11 @@ function Flow({
 
       {status && (
         <div className="toast" role="status">
-          <Icon name="check" />
+          <span className="toast-icon">
+            <Icon name="check" />
+          </span>
           <p>{status}</p>
-          <button className="link" aria-label="Dismiss message" onClick={() => setStatus("")}>
+          <button className="toast-close" aria-label="Dismiss message" onClick={() => setStatus("")}>
             <Icon name="close" />
           </button>
         </div>
@@ -893,29 +982,96 @@ function Flow({
   );
 }
 
+// Decorative picture of the idea: a notice goes in, three answers come out.
+function HeroArt() {
+  return (
+    <div className="art" aria-hidden="true">
+      <div className="paper">
+        <div className="paper-head">
+          <span className="seal" />
+          <div>
+            <b>ಸಾರ್ವಜನಿಕ ಪ್ರಕಟಣೆ</b>
+            <i>PUBLIC NOTICE</i>
+          </div>
+        </div>
+        <span className="ln w90" />
+        <span className="ln w70" />
+        <span className="ln hl w80" />
+        <span className="ln w60" />
+        <span className="ln w85" />
+        <span className="ln hl w55" />
+        <span className="ln w75" />
+        <span className="ln w40" />
+        <div className="beam" />
+      </div>
+      <div className="chip c1">
+        <span className="chip-icon blue">
+          <Icon name="calendar" />
+        </span>
+        <div>
+          <b>14 October</b>
+          <span>9 AM to 6 PM</span>
+        </div>
+      </div>
+      <div className="chip c2">
+        <span className="chip-icon red">
+          <Icon name="home" />
+        </span>
+        <div>
+          <b>Your area</b>
+          <span>is on the list</span>
+        </div>
+      </div>
+      <div className="chip c3">
+        <span className="chip-icon green">
+          <Icon name="check" />
+        </span>
+        <div>
+          <b>Reminder set</b>
+          <span>family told</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const FEATURES: { icon: IconName; tint: Tint; title: string; text: string }[] = [
+  { icon: "search", tint: "amber", title: "Proof for every fact", text: "Tap any date or amount to see the exact words it came from." },
+  { icon: "home", tint: "green", title: "Does it affect my family?", text: "Checks your area and household against what the notice says." },
+  { icon: "refresh", tint: "blue", title: "What changed?", text: "Add a corrected notice and see the difference, with your plan updated." },
+  { icon: "card", tint: "pink", title: "A card for your parents", text: "Large text in Kannada, Hindi or English, ready to share or read aloud." },
+];
+
 export default function Home() {
   const [language, setLanguage] = useStored<Language>("nta.language", "en");
   const [scale, setScale] = useStored<number>("nta.scale", 1);
   const [profile, setProfile] = useStored<Profile>("nta.profile", EMPTY_PROFILE);
   const [reminders, setReminders] = useStored<SavedReminder[]>("nta.reminders", NO_REMINDERS);
   const [thread, setThread] = useState<Thread | null>(null);
-  const [busy, setBusy] = useState<"original" | "revised" | null>(null);
+  const [pending, setPending] = useState<{ slot: Slot; image: string | null } | null>(null);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const busy = pending !== null;
 
-  async function onFile(file: File | undefined, slot: "original" | "revised") {
+  async function onFile(file: File | undefined, slot: Slot) {
     if (!file || busy) return;
     setError("");
-    setBusy(slot);
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose a photo of the notice.");
+      return;
+    }
+    setPending({ slot, image: null });
     try {
-      const result = await extract(file, language);
+      const image = await toDataUrl(file);
+      setPending({ slot, image });
+      const result = await extract(image, language);
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
       showResult("result");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
-      setBusy(null);
+      setPending(null);
     }
   }
 
@@ -934,15 +1090,15 @@ export default function Home() {
   const updates = changes ? planUpdates(changes) : [];
   const fixture = current?.source === "fixture";
 
-  const picker = (slot: "original" | "revised", capture: boolean, label: string, ghost = false) => (
-    <label className={`file${ghost ? " ghost" : ""}`}>
+  const picker = (slot: Slot, capture: boolean, label: string, cls = "") => (
+    <label className={`file ${cls}`}>
       <Icon name={capture ? "camera" : "image"} />
       {label}
       <input
         type="file"
         accept="image/*"
         capture={capture ? "environment" : undefined}
-        disabled={busy !== null}
+        disabled={busy}
         onChange={(e) => {
           onFile(e.target.files?.[0], slot);
           e.target.value = "";
@@ -951,161 +1107,167 @@ export default function Home() {
     </label>
   );
 
+  const scanning = pending && (
+    <div className="scan" role="status">
+      <div className="scan-frame">
+        {pending.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={pending.image} alt="" />
+        ) : (
+          <div className="scan-blank" />
+        )}
+        <div className="beam" aria-hidden="true" />
+      </div>
+      <div>
+        <p className="scan-title">Gemma 4 is reading your notice…</p>
+        <p className="muted">This can take up to a minute. Please keep this page open.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="app" style={{ "--scale": scale } as CSSProperties}>
       <a className="skip" href="#start">
         Skip to upload
       </a>
       <header className="topbar">
-        <div className="brand">
-          <span className="mark" aria-hidden="true">
-            <Icon name="arrow" />
-          </span>
-          Notice → Action
-        </div>
-        <div className="controls">
-          <div role="group" aria-label="Text size" className="sizes">
-            {SCALES.map((s) => (
-              <button
-                key={s.value}
-                className={scale === s.value ? "on" : ""}
-                aria-pressed={scale === s.value}
-                aria-label={s.name}
-                onClick={() => setScale(s.value)}
-              >
-                {s.label}
-              </button>
-            ))}
+        <div className="topbar-in">
+          <div className="brand">
+            <span className="mark" aria-hidden="true">
+              <Icon name="arrow" />
+            </span>
+            <span>
+              Notice<span className="brand-arrow"> → </span>Action
+            </span>
           </div>
-          <label className="lang">
-            <span className="sr">Explain in</span>
-            <select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
-              {(Object.keys(LANGUAGES) as Language[]).map((l) => (
-                <option key={l} value={l}>
-                  {LANGUAGES[l].label}
-                </option>
+          <div className="controls">
+            <div role="group" aria-label="Text size" className="sizes">
+              {SCALES.map((s) => (
+                <button
+                  key={s.value}
+                  className={scale === s.value ? "on" : ""}
+                  aria-pressed={scale === s.value}
+                  aria-label={s.name}
+                  onClick={() => setScale(s.value)}
+                >
+                  {s.label}
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+            <label className="lang">
+              <span className="sr">Explain in</span>
+              <select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
+                {(Object.keys(LANGUAGES) as Language[]).map((l) => (
+                  <option key={l} value={l}>
+                    {LANGUAGES[l].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </header>
 
       <main>
-        {!thread && (
-          <section className="hero">
-            <h1>Understand any public notice in a minute.</h1>
-            <p>
-              Know what it means for your household, what changed, and what to do next, with proof.
+        {!thread ? (
+          <>
+            <section
+              id="start"
+              className={`hero${dragging ? " dragging" : ""}`}
+              aria-labelledby="hero-title"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                onFile(e.dataTransfer.files?.[0], "original");
+              }}
+            >
+              <div className="hero-text">
+                <p className="pill">
+                  <span className="pill-dot" /> Reads Kannada and English notices
+                </p>
+                <h1 id="hero-title">
+                  A photo of the notice. <em>A clear plan</em> for your family.
+                </h1>
+                <p className="hero-sub">
+                  Know what it means for your household, what changed, and what to do next. Every
+                  answer comes with proof.
+                </p>
+                {scanning || (
+                  <>
+                    <div className="actions cta">
+                      {picker("original", true, "Take a photo", "primary")}
+                      {picker("original", false, "Choose a photo", "ghost")}
+                    </div>
+                    <div className="samples">
+                      <span>No notice at hand? Try a sample:</span>
+                      <button className="chip-btn" onClick={() => loadFixture(FIXTURE_WATER)}>
+                        Water cut
+                      </button>
+                      <button className="chip-btn" onClick={() => loadFixture(FIXTURE_SCHOLARSHIP)}>
+                        Scholarship
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <HeroArt />
+            </section>
+
+            {error && (
+              <div role="alert">
+                <Banner tone="bad">{error}</Banner>
+              </div>
+            )}
+
+            <section className="features" aria-label="What you get">
+              {FEATURES.map((f) => (
+                <div key={f.title} className={`feature tint-${f.tint}`}>
+                  <span className="badge">
+                    <Icon name={f.icon} />
+                  </span>
+                  <h3>{f.title}</h3>
+                  <p>{f.text}</p>
+                </div>
+              ))}
+            </section>
+
+            <p className="privacy">
+              <Icon name="info" /> Your photo is sent to a hosted AI service (Gemma 4 through
+              OpenRouter) to be read, so do not upload private documents. Your household details and
+              reminders stay in this browser. This is not an official government service.
             </p>
-          </section>
-        )}
-
-        <section
-          id="start"
-          className={`card upload${dragging ? " dragging" : ""}${thread ? " compact" : ""}`}
-          aria-labelledby="start-title"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            onFile(e.dataTransfer.files?.[0], "original");
-          }}
-        >
-          <h2 id="start-title" className="section-title">
-            <span className="badge num">1</span>
-            {thread ? "Read another notice" : "Show us the notice"}
-          </h2>
-          {busy ? (
-            <div className="reading" role="status">
-              <div className="bar" aria-hidden="true">
-                <span />
+          </>
+        ) : (
+          <>
+            <section id="start" className="again" aria-label="Read another notice">
+              {scanning && pending?.slot === "original" ? (
+                scanning
+              ) : (
+                <>
+                  <strong>Read another notice</strong>
+                  <div className="actions">
+                    {picker("original", true, "Take a photo", "small")}
+                    {picker("original", false, "Choose a photo", "ghost small")}
+                  </div>
+                </>
+              )}
+            </section>
+            {error && (
+              <div role="alert">
+                <Banner tone="bad">{error}</Banner>
               </div>
-              <p>
-                <strong>Reading the notice…</strong>
-                <br />
-                This can take up to a minute. Please keep this page open.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="actions">
-                {picker("original", true, "Take a photo")}
-                {picker("original", false, "Choose a photo", true)}
-              </div>
-              {!thread && <p className="muted drop-hint">On a computer you can also drop a photo here.</p>}
-            </>
-          )}
-          {!thread && (
-            <>
-              <p className="muted">
-                Your photo is sent to a hosted AI service (Gemma 4 through OpenRouter) to be read. Do
-                not upload private documents. Your household details and reminders stay in this
-                browser. This is not an official government service.
-              </p>
-              <div className="samples">
-                <p className="eyebrow">No notice at hand? Try a sample (no AI used)</p>
-                <div className="actions">
-                  <button className="ghost" onClick={() => loadFixture(FIXTURE_WATER)} disabled={busy !== null}>
-                    Water-cut notice
-                  </button>
-                  <button className="ghost" onClick={() => loadFixture(FIXTURE_SCHOLARSHIP)} disabled={busy !== null}>
-                    Scholarship notice
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </section>
-
-        {!thread && (
-          <section className="how-wrap" aria-label="How it works">
-            <ol className="how">
-              <li>
-                <span className="badge">
-                  <Icon name="camera" />
-                </span>
-                <div>
-                  <strong>Photograph it</strong>
-                  <span>Kannada or English</span>
-                </div>
-              </li>
-              <li>
-                <span className="badge">
-                  <Icon name="search" />
-                </span>
-                <div>
-                  <strong>See what it means</strong>
-                  <span>With the source text</span>
-                </div>
-              </li>
-              <li>
-                <span className="badge">
-                  <Icon name="calendar" />
-                </span>
-                <div>
-                  <strong>Act on it</strong>
-                  <span>Reminder and family card</span>
-                </div>
-              </li>
-            </ol>
-          </section>
-        )}
-
-        {error && (
-          <div role="alert">
-            <Banner tone="bad">{error}</Banner>
-          </div>
+            )}
+          </>
         )}
 
         {thread && current && (
           <>
-            <h2 id="result" tabIndex={-1} className="divider section-title">
-              <span className="badge num">2</span> What it means for you
-            </h2>
+            <div id="result" tabIndex={-1} className="result-anchor" />
             {fixture && (
               <Banner tone="bad">
                 <strong>Sample.</strong> This is a hand-written synthetic notice. It is not AI output
@@ -1114,23 +1276,40 @@ export default function Home() {
             )}
 
             {changes && (
-              <Section id="changed" title="What changed?" icon="refresh" className="changed">
+              <Section id="changed" title="What changed?" icon="refresh" tint="amber" className="changed">
                 {changes.length === 0 ? (
                   <p>Nothing important changed: the date, time, areas, office and documents are the same.</p>
                 ) : (
                   <>
-                    <ul className="changes">
+                    <ul className="diff">
                       {changes.map((c) => (
                         <li key={c.field}>
-                          <p>{c.sentence}</p>
+                          <span className="eyebrow">{c.label}</span>
+                          <div className="diff-row">
+                            <div className="diff-before">
+                              <span className="sr">Before: </span>
+                              {c.before}
+                            </div>
+                            <span className="diff-arrow" aria-hidden="true">
+                              <Icon name="arrow" />
+                            </span>
+                            <div className="diff-after">
+                              <span className="sr">Now: </span>
+                              {c.after}
+                            </div>
+                          </div>
+                          <p className="diff-sentence">{c.sentence}</p>
                           <Proof notice={current.notice} fields={[c.field]} />
                         </li>
                       ))}
                     </ul>
                     {updates.length > 0 && (
                       <Banner tone="warn" big live>
-                        Your plan needs {updates.length} update{updates.length === 1 ? "" : "s"}:{" "}
-                        {updates.join(", ")}.
+                        <strong>
+                          Your plan needs {updates.length} update{updates.length === 1 ? "" : "s"}
+                        </strong>
+                        <br />
+                        Check {updates.join(" and ")}.
                       </Banner>
                     )}
                   </>
@@ -1149,38 +1328,45 @@ export default function Home() {
               setReminders={setReminders}
             />
 
-            <section className="card" aria-labelledby="revise">
+            <section className="card revise" aria-labelledby="revise">
               <h2 id="revise" className="section-title">
-                <span className="badge num">3</span> Got a corrected notice later?
+                <span className="badge">
+                  <Icon name="refresh" />
+                </span>
+                Got a corrected notice later?
               </h2>
               <p>
                 Add the newer notice here only if it replaces the one above. We will show what
                 changed and help you update your reminder.
               </p>
-              <div className="actions">
-                {picker("revised", true, "Photo of the new notice")}
-                {picker("revised", false, "Choose a photo", true)}
-                {thread.original.notice === FIXTURE_WATER && !thread.revised && (
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      setThread({
-                        ...thread,
-                        revised: { notice: FIXTURE_WATER_REVISED, image: null, source: "fixture", language: "en" },
-                      });
-                      showResult("result");
-                    }}
-                  >
-                    Sample corrected notice
-                  </button>
-                )}
-              </div>
+              {scanning && pending?.slot === "revised" ? (
+                scanning
+              ) : (
+                <div className="actions">
+                  {picker("revised", true, "Photo of the new notice")}
+                  {picker("revised", false, "Choose a photo", "ghost")}
+                  {thread.original.notice === FIXTURE_WATER && !thread.revised && (
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        setThread({
+                          ...thread,
+                          revised: { notice: FIXTURE_WATER_REVISED, image: null, source: "fixture", language: "en" },
+                        });
+                        showResult("result");
+                      }}
+                    >
+                      Sample corrected notice
+                    </button>
+                  )}
+                </div>
+              )}
             </section>
           </>
         )}
 
         {reminders.length > 0 && (
-          <Section id="saved" title="My saved reminders" icon="calendar">
+          <Section id="saved" title="My saved reminders" icon="calendar" tint="green">
             <ul className="saved">
               {reminders.map((r) => (
                 <li key={r.threadId}>
@@ -1207,9 +1393,14 @@ export default function Home() {
       </main>
 
       <footer>
+        <div className="footer-badges">
+          <span>Gemma 4 · open-weight model</span>
+          <span>Open source · MIT</span>
+          <span>Hacktoberfest Hack Day Bengaluru ’26</span>
+        </div>
         <p>
-          Notices are read by Gemma 4, an open-weight model. It can make mistakes, so always check
-          the original notice. Not an official government service.
+          The AI can make mistakes, so always check the original notice. Not an official government
+          service.
         </p>
       </footer>
     </div>

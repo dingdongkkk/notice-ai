@@ -1,13 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible } from "next/font/google";
+import { Atkinson_Hyperlegible, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 
-// A typeface designed for readers with low vision. Kannada and Devanagari
-// fall back to the device's own fonts.
+// Body text uses a typeface designed for readers with low vision. Kannada and
+// Devanagari fall back to the device's own fonts.
 const body = Atkinson_Hyperlegible({
   weight: ["400", "700"],
   subsets: ["latin"],
   variable: "--font-body",
+  display: "swap",
+});
+
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-display",
   display: "swap",
 });
 
@@ -21,14 +27,14 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#0b5c7a" },
-    { media: "(prefers-color-scheme: dark)", color: "#0e151b" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f6f1" },
+    { media: "(prefers-color-scheme: dark)", color: "#080c17" },
   ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={body.variable}>
+    <html lang="en" className={`${body.variable} ${display.variable}`}>
       <body>{children}</body>
     </html>
   );

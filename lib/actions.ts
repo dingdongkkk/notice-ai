@@ -294,7 +294,14 @@ export function buildCard(
 
 // ---- Revision comparison ---------------------------------------------------
 
-export type Change = { field: string; sentence: string; planUpdate: string | null };
+export type Change = {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+  sentence: string;
+  planUpdate: string | null;
+};
 
 function listDiff(a: string[], b: string[]) {
   const setA = new Set(a.map(norm));
@@ -319,11 +326,21 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
     } else {
       sentence = `The ${label} changed: ${a.eventDate ?? "not readable"} → ${b.eventDate ?? "not readable"}.`;
     }
-    changes.push({ field: "date", sentence, planUpdate: "your reminder" });
+    changes.push({
+      field: "date",
+      label: b.dateKind === "deadline" ? "Deadline" : "Date",
+      before: isIsoDate(a.eventDate) ? formatDate(a.eventDate) : "Not readable",
+      after: isIsoDate(b.eventDate) ? formatDate(b.eventDate) : "Not readable",
+      sentence,
+      planUpdate: "your reminder",
+    });
   }
   if (differs(a.startTime, b.startTime) || differs(a.endTime, b.endTime)) {
     changes.push({
       field: "time",
+      label: "Time",
+      before: formatRange(a.startTime, a.endTime),
+      after: formatRange(b.startTime, b.endTime),
       sentence: `The time changed: ${formatRange(a.startTime, a.endTime)} → ${formatRange(b.startTime, b.endTime)}.`,
       planUpdate: "your reminder",
     });
@@ -332,6 +349,9 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (areas.added.length || areas.removed.length) {
     changes.push({
       field: "affectedAreas",
+      label: "Areas",
+      before: areas.removed.length ? `No longer listed: ${areas.removed.join(", ")}` : "Nothing removed",
+      after: areas.added.length ? `Newly listed: ${areas.added.join(", ")}` : "Nothing added",
       sentence: [
         areas.added.length ? `Areas added: ${areas.added.join(", ")}.` : "",
         areas.removed.length ? `Areas removed: ${areas.removed.join(", ")}.` : "",
@@ -344,6 +364,9 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (differs(a.officeLocation, b.officeLocation)) {
     changes.push({
       field: "office",
+      label: "Office",
+      before: a.officeLocation ?? "Not stated",
+      after: b.officeLocation ?? "Not stated",
       sentence: `The office location changed: ${a.officeLocation ?? "not stated"} → ${b.officeLocation ?? "not stated"}.`,
       planUpdate: "where to go",
     });
@@ -351,6 +374,9 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (differs(a.amount, b.amount)) {
     changes.push({
       field: "amount",
+      label: "Amount",
+      before: a.amount ?? "Not stated",
+      after: b.amount ?? "Not stated",
       sentence: `The amount changed: ${a.amount ?? "not stated"} → ${b.amount ?? "not stated"}.`,
       planUpdate: null,
     });
@@ -359,6 +385,9 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (docs.added.length || docs.removed.length) {
     changes.push({
       field: "documents",
+      label: "Documents",
+      before: docs.removed.length ? `No longer listed: ${docs.removed.join(", ")}` : "Nothing removed",
+      after: docs.added.length ? `Newly listed: ${docs.added.join(", ")}` : "Nothing added",
       sentence: [
         docs.added.length ? `Documents added: ${docs.added.join(", ")}.` : "",
         docs.removed.length ? `Documents no longer listed: ${docs.removed.join(", ")}.` : "",
@@ -371,6 +400,9 @@ export function compareNotices(a: Notice, b: Notice): Change[] {
   if (differs(a.issuer, b.issuer)) {
     changes.push({
       field: "issuer",
+      label: "Issuer",
+      before: a.issuer ?? "Not stated",
+      after: b.issuer ?? "Not stated",
       sentence: `The issuer reads differently: ${a.issuer ?? "not stated"} → ${b.issuer ?? "not stated"}. Check that this notice really replaces the earlier one.`,
       planUpdate: null,
     });
