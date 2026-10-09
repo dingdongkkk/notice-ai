@@ -2180,7 +2180,13 @@ ol.sources {
   padding-left: 1.4em;
 }
 
-/* ---- Highlights on the photo --------------------------------------------- */
+/* ---- Highlights on the photo ---------------------------------------------
+   Each marked line is a translucent stroke that darkens the paper beneath it,
+   like highlighter ink, with a rough hand-drawn edge and a slight tilt. */
+
+.marker-defs {
+  position: absolute;
+}
 
 .photo-frame {
   position: relative;
@@ -2192,53 +2198,72 @@ ol.sources {
   width: 100%;
 }
 
-.mark-box {
-  --mark: #f2b705;
+.stroke {
+  --ink: #ffe600;
   position: absolute;
-  border: 2px solid var(--mark);
-  background: color-mix(in srgb, var(--mark) 28%, transparent);
-  border-radius: 4px;
-  padding: 0;
+  pointer-events: none;
 }
 
-.mark-box b {
+.stroke::before {
+  content: "";
   position: absolute;
-  left: -2px;
-  bottom: 100%;
-  background: var(--mark);
-  color: #10151f;
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 0 6px;
-  border-radius: 4px 4px 0 0;
-  white-space: nowrap;
+  inset: -12% 0 -6% 0;
+  background: linear-gradient(
+    96deg,
+    transparent 0,
+    var(--ink) 1.5%,
+    color-mix(in srgb, var(--ink) 82%, transparent) 38%,
+    var(--ink) 61%,
+    color-mix(in srgb, var(--ink) 88%, transparent) 86%,
+    var(--ink) 98%,
+    transparent 100%
+  );
+  border-radius: 28% 60% 34% 52% / 46% 38% 58% 44%;
+  opacity: 0.62;
+  mix-blend-mode: multiply;
+  transform: rotate(var(--tilt, 0deg));
+  filter: url(#marker-sm);
+  animation: swipe 0.45s ease-out var(--delay, 0ms) backwards;
+}
+
+.photo-frame.large .stroke::before {
+  filter: url(#marker-lg);
+}
+
+@keyframes swipe {
+  from {
+    clip-path: inset(-40% 100% -40% 0);
+  }
+  to {
+    clip-path: inset(-40% -2% -40% 0);
+  }
 }
 
 .mark-date,
 .mark-time {
-  --mark: #e03131;
+  --ink: #ff6fae;
 }
 
 .mark-areas,
 .mark-office {
-  --mark: #2f6fed;
+  --ink: #5cc8ff;
 }
 
 .mark-amount,
 .mark-documents {
-  --mark: #12864c;
+  --ink: #6fe38a;
 }
 
 .mark-action {
-  --mark: #f2b705;
+  --ink: #ffe600;
 }
 
 .mark-consequence {
-  --mark: #b3184f;
+  --ink: #ffa040;
 }
 
 .mark-reference {
-  --mark: #7a3cf0;
+  --ink: #c3a1ff;
 }
 
 ul.legend {
@@ -2246,24 +2271,38 @@ ul.legend {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px 14px;
   margin: 0 0 0.5em;
 }
 
 ul.legend li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85em;
+  position: relative;
+  font-size: 0.88em;
   font-weight: 700;
+  padding: 0 0.35em;
+  z-index: 0;
 }
 
+/* The legend words are themselves highlighted in their pen colour. */
 ul.legend li::before {
   content: "";
-  width: 0.9em;
-  height: 0.9em;
-  border-radius: 3px;
-  background: var(--mark, #f2b705);
+  position: absolute;
+  inset: 12% -2% 6% -2%;
+  background: var(--ink, #ffe600);
+  opacity: 0.6;
+  border-radius: 30% 55% 35% 50% / 50% 40% 55% 45%;
+  transform: rotate(-1deg);
+  z-index: -1;
+}
+
+@media (prefers-color-scheme: dark) {
+  ul.legend li {
+    color: #10151f;
+  }
+
+  ul.legend li::before {
+    opacity: 0.95;
+  }
 }
 
 dialog.zoom .photo-frame {
@@ -2306,4 +2345,18 @@ dialog.zoom .photo-frame {
   flex: 1;
   height: 1px;
   background: var(--line);
+}
+
+/* The legend sits beside the Close button in the enlarged view. */
+dialog.zoom form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+}
+
+dialog.zoom form ul.legend {
+  margin: 0;
 }

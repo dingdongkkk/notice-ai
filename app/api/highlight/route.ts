@@ -29,7 +29,7 @@ export async function POST(req: Request) {
         },
       ],
       key,
-      900,
+      1600,
     );
     const start = reply.indexOf("[");
     const end = reply.lastIndexOf("]");
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         width: (x2 - x1) / 10,
       });
     }
-    return NextResponse.json({ boxes: boxes.slice(0, 12) });
+    return NextResponse.json({ boxes: boxes.slice(0, 30) });
   } catch (err) {
     if (err instanceof SyntaxError) return NextResponse.json({ boxes: [] });
     const { error, status } = describeFailure(err);

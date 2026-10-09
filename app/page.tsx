@@ -36,11 +36,10 @@ import {
   useSession,
   type SavedDocument,
 } from "./account";
+import { findHighlights, type Box } from "./highlights";
 import { Icon, type IconName } from "./icons";
 import { LangContext, useT } from "./lang";
 
-// A marked region of the photo, in percentages of its width and height.
-type Box = { label: string; top: number; left: number; height: number; width: number };
 
 type Result = {
   notice: Notice;
@@ -641,23 +640,68 @@ const BOX_NAMES: Record<string, string> = {
   reference: "Reference",
 };
 
-// The photo with the important parts marked where the model found them.
-function Marked({ image, boxes, alt, labels }: { image: string; boxes: Box[]; alt: string; labels: boolean }) {
-  const t = useT();
+// Roughens the edge of each stroke so it looks drawn by hand, not by a ruler.
+// `sm` is for the small photo, the other for the enlarged view.
+function MarkerFilters() {
   return (
-    <span className="photo-frame">
+    <svg className="marker-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <filter id="marker-sm" x="-5%" y="-40%" width="110%" height="180%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.05 0.9" numOctaves="2" seed="7" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="marker-lg" x="-5%" y="-40%" width="110%" height="180%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.02 0.45" numOctaves="2" seed="7" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="7" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
+  );
+}
+
+// The photo with the important parts run over in highlighter where the model
+// found them.
+function Marked({ image, boxes, alt, large }: { image: string; boxes: Box[]; alt: string; large: boolean }) {
+  return (
+    <span className={`photo-frame${large ? " large" : ""}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={image} alt={alt} />
-      {boxes.map((b, i) => (
-        <span
-          key={i}
-          className={`mark-box mark-${b.label}`}
-          style={{ top: `${b.top}%`, left: `${b.left}%`, height: `${b.height}%`, width: `${b.width}%` }}
-        >
-          {labels && <b>{t(BOX_NAMES[b.label] ?? b.label)}</b>}
-        </span>
-      ))}
+      {boxes.map((b, i) => {
+        // No two strokes of a real pen match: vary the tilt and how far each
+        // one overshoots the words, in a fixed pattern so it does not jitter.
+        const tilt = (((i * 37) % 7) - 3) * 0.22;
+        const over = 0.6 + ((i * 53) % 5) * 0.25;
+        return (
+          <span
+            key={i}
+            className={`stroke mark-${b.label}`}
+            style={
+              {
+                top: `${b.top}%`,
+                left: `${b.left - over}%`,
+                height: `${b.height}%`,
+                width: `${b.width + over * 2}%`,
+                "--tilt": `${tilt}deg`,
+                "--delay": `${i * 110}ms`,
+              } as CSSProperties
+            }
+          />
+        );
+      })}
     </span>
+  );
+}
+
+// Which pen colour means what. The words are highlighted in their own colour.
+function Legend({ boxes }: { boxes: Box[] }) {
+  const t = useT();
+  if (boxes.length === 0) return null;
+  return (
+    <ul className="legend">
+      {[...new Set(boxes.map((b) => b.label))].map((label) => (
+        <li key={label} className={`mark-${label}`}>
+          {t(BOX_NAMES[label] ?? label)}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -681,8 +725,9 @@ function Photo({ result }: { result: Result }) {
   const found = result.boxes ?? [];
   return (
     <>
+      <MarkerFilters />
       <button className="photo" onClick={() => dialog.current?.showModal()}>
-        <Marked image={image} boxes={boxes} alt={t("The notice you uploaded")} labels={false} />
+        <Marked image={image} boxes={boxes} alt={t("The notice you uploaded")} large={false} />
         <span>
           <Icon name="zoom" /> {t("Tap to enlarge")}
         </span>
@@ -694,13 +739,7 @@ function Photo({ result }: { result: Result }) {
       )}
       {found.length > 0 && (
         <>
-          <ul className="legend">
-            {[...new Set(found.map((b) => b.label))].map((label) => (
-              <li key={label} className={`mark-${label}`}>
-                {t(BOX_NAMES[label] ?? label)}
-              </li>
-            ))}
-          </ul>
+          <Legend boxes={found} />
           <p className="muted">
             {t("Important parts are marked on the photo by the AI. Positions are approximate.")}
           </p>
@@ -710,8 +749,9 @@ function Photo({ result }: { result: Result }) {
         </>
       )}
       <dialog ref={dialog} className="zoom" aria-label={t("Enlarged notice photo")}>
-        <Marked image={image} boxes={boxes} alt={t("The notice you uploaded")} labels />
+        <Marked image={image} boxes={boxes} alt={t("The notice you uploaded")} large />
         <form method="dialog">
+          <Legend boxes={boxes} />
           <button>
             <Icon name="close" /> {t("Close")}
           </button>
@@ -1235,18 +1275,14 @@ export default function Home() {
     try {
       const image = await toDataUrl(file);
       setPending({ slot, image });
-      const result = await extract(image, await toTiles(file), language);
+      const tiles = await toTiles(file);
+      const result = await extract(image, tiles, language);
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
       showResult("result");
       // Highlights arrive a few seconds later and do not hold up the answer.
-      fetch("/api/highlight", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image }),
-      })
-        .then((res) => res.json())
-        .then((body) => attachBoxes(image, Array.isArray(body?.boxes) ? body.boxes : []))
+      findHighlights(image, tiles)
+        .then((boxes) => attachBoxes(image, boxes))
         .catch(() => attachBoxes(image, []));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");

@@ -14,7 +14,7 @@ Photograph an official document in Kannada or English and the app turns it into 
 8. **Answers follow-up questions** from the facts already read from the notice.
 9. **Explains the fine print.** For circulars and legal papers it lists what the document says will happen if you do not act, the laws and rules it names, and its official words in everyday language.
 
-10. **Marks the important parts on the photo.** A second request asks Gemma 4 where the date, time, areas, amount, office, documents, required action and consequences are written, and draws coloured boxes over the photo with a legend. Positions are the model's and are approximate.
+10. **Highlights the important parts on the photo**, like a marker pen. Gemma 4 is asked, for the top and bottom halves of the photo separately, where the date, time, areas, amount, office, documents, required action and consequences are written, one mark per line of text. The browser then fits each mark to the printed line by reading the photo's pixels: it moves the mark onto the nearest line of print and trims it to whole words. Each kind has its own pen colour, shown in a key under the photo and in the enlarged view.
 11. **Remembers your notices.** With an account you can save the facts read from a notice, reopen them later, see earlier notices related to the one on screen, and ask a question across everything you have saved ("Which of my notices have a deadline this month?"). The answer cites the notices it used.
 12. **Explains a kind of notice without an upload.** Anyone, signed in or not, can ask what a type of notice means. The answer comes from a shared library of general summaries.
 
@@ -124,6 +124,7 @@ While the OAuth consent screen is in "Testing" mode, only the test users you lis
 | `app/api/documents/` | Save, list and delete your notices; find related ones; answer a question across them |
 | `app/api/library/route.ts` | Library size, and answers to general questions from it |
 | `app/api/highlight/route.ts` | Asks the model where the important parts are on the photo |
+| `app/highlights.ts` | Combines the two halves and fits each mark to the printed line |
 | `lib/db.ts`, `lib/auth.ts` | The SQLite database (built into Node) and accounts |
 | `lib/retrieve.ts` | Embeddings, ranking, saved notices and the shared library |
 | `app/account.tsx`, `app/login/page.tsx` | Sign-in page and the saved-notice, related-notice and question components |
@@ -150,7 +151,8 @@ Key dependencies: Next.js, React, Zod.
 
 - Google sign-in has not been run against Google: no OAuth client was available when it was written. Only its start redirect and its rejection of a bad return were tested.
 - Accounts are basic: there is no email, password reset or account deletion screen, and the sign-in lockout is held in memory. The database is one local file, so this build suits a single server and would lose its data on a host with no persistent disk.
-- Highlights were checked on three computer-drawn notices, where the boxes sat on the right lines. They have not been checked on a real photograph.
+- Highlights were measured on one computer-drawn English notice: all eleven marks covered the intended words and sat within a few pixels of the printed line. They have not been checked on a real photograph or on Kannada print, where shadows, skew and vowel signs above and below the line may make the pixel fitting less reliable. Which phrases get marked is the model's choice and can be wrong.
+- Finding highlights costs two extra model requests per photo.
 - A question across saved notices always passes the four best matches to the model, even weak ones, and lists all four as consulted.
 
 ## License
