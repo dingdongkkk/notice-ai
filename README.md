@@ -17,8 +17,10 @@ Built for Hacktoberfest Hack Day Bengaluru '26 (PS 01, Multimodal Community Inte
 
 ## Built for older users and phones
 
-- Large base text with A / A+ / A++ buttons that scale the whole page, remembered on the device.
-- One column, numbered steps, big buttons (52 px minimum), full-width on phones, with a "Take a photo" button that opens the camera.
+- Set in Atkinson Hyperlegible, a typeface designed for readers with low vision, with A / A+ / A++ buttons that scale the whole page and are remembered on the device.
+- Numbered steps, big buttons (56 px minimum), full-width on phones, with a "Take a photo" button that opens the camera. The upload buttons are on the first screen.
+- The result opens with the headline and a calendar-style date tile, and a row of section links stays at the top while you scroll.
+- Tap the photo to enlarge it. On wide screens the photo and facts stay beside the explanation.
 - High-contrast colours in light and dark mode. Status is never shown by colour alone.
 - Keyboard and screen-reader support: labelled fields, visible focus, live status messages, and language tags on Kannada and Hindi text.
 
@@ -68,6 +70,7 @@ OPENROUTER_MODEL=google/gemma-4-31b-it:free
 | `lib/i18n.ts` | Family card labels in three languages |
 | `lib/store.ts` | Browser local storage hook |
 | `app/page.tsx` | The single page |
+| `app/icons.tsx` | Inline SVG icons |
 
 Key dependencies: Next.js, React, Zod.
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   EMPTY_PROFILE,
   buildCard,
@@ -25,6 +25,7 @@ import {
 import { CARD_LABELS } from "@/lib/i18n";
 import { LANGUAGES, isIsoDate, isTime, type Language, type Notice } from "@/lib/schema";
 import { useStored } from "@/lib/store";
+import { Icon, type IconName } from "./icons";
 
 type Result = {
   notice: Notice;
@@ -54,6 +55,7 @@ async function toDataUrl(file: File): Promise<string> {
 }
 
 async function extract(file: File, language: Language): Promise<Result> {
+  if (!file.type.startsWith("image/")) throw new Error("Please choose a photo of the notice.");
   const image = await toDataUrl(file);
   const res = await fetch("/api/extract", {
     method: "POST",
@@ -65,6 +67,15 @@ async function extract(file: File, language: Language): Promise<Result> {
     throw new Error(body?.error || "Something went wrong. Please try again.");
   }
   return { notice: body.notice, image, source: "live", language, model: body.model };
+}
+
+// Bring the new result into view and move screen-reader focus to it.
+function showResult(id: string) {
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ block: "start" });
+    el?.focus({ preventScroll: true });
+  }, 50);
 }
 
 function download(name: string, content: string, type: string) {
@@ -93,6 +104,7 @@ function Proof({ notice, fields }: { notice: Notice; fields: string[] }) {
   return (
     <div className="proof">
       <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon name="search" size="1.05em" />
         {open ? "Hide proof" : "Show me where"}
       </button>
       {open && (
@@ -138,7 +150,8 @@ function ReadAloud({ text, language }: { text: string; language: Language }) {
   return (
     <>
       <button className="ghost" onClick={toggle}>
-        {state === "speaking" ? "■ Stop reading" : "🔊 Read aloud"}
+        <Icon name={state === "speaking" ? "stop" : "speaker"} />
+        {state === "speaking" ? "Stop reading" : "Read aloud"}
       </button>
       {state === "unavailable" && (
         <p className="muted" role="status">
@@ -149,12 +162,70 @@ function ReadAloud({ text, language }: { text: string; language: Language }) {
   );
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({
+  id,
+  title,
+  icon,
+  className = "",
+  children,
+}: {
+  id: string;
+  title: string;
+  icon: IconName;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="card" aria-labelledby={id}>
-      <h2 id={id}>{title}</h2>
+    <section className={`card ${className}`} aria-labelledby={id}>
+      <h2 id={id} className="section-title">
+        <span className="badge">
+          <Icon name={icon} />
+        </span>
+        {title}
+      </h2>
       {children}
     </section>
+  );
+}
+
+function Banner({
+  tone,
+  big = false,
+  live = false,
+  children,
+}: {
+  tone: "ok" | "warn" | "bad";
+  big?: boolean;
+  live?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`banner ${tone}${big ? " big" : ""}`} role={live ? "status" : undefined}>
+      <Icon name={tone === "ok" ? "check" : tone === "warn" ? "info" : "alert"} />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function DateTile({ date, language }: { date: string | null; language: Language }) {
+  if (!isIsoDate(date)) {
+    return (
+      <div className="tile unknown" aria-hidden="true">
+        <span className="tile-top">Date</span>
+        <span className="tile-day">?</span>
+        <span className="tile-bottom">check</span>
+      </div>
+    );
+  }
+  const d = new Date(`${date}T00:00:00Z`);
+  const part = (o: Intl.DateTimeFormatOptions) =>
+    d.toLocaleDateString(LANGUAGES[language].speech, { ...o, timeZone: "UTC" });
+  return (
+    <div className="tile" aria-hidden="true">
+      <span className="tile-top">{part({ month: "short" })}</span>
+      <span className="tile-day">{d.getUTCDate()}</span>
+      <span className="tile-bottom">{part({ weekday: "short" })}</span>
+    </div>
   );
 }
 
@@ -172,12 +243,7 @@ function Choice({
       <legend>{legend}</legend>
       {(["yes", "no", ""] as YesNo[]).map((v) => (
         <label key={v || "skip"} className={value === v ? "on" : ""}>
-          <input
-            type="radio"
-            name={legend}
-            checked={value === v}
-            onChange={() => onChange(v)}
-          />
+          <input type="radio" name={legend} checked={value === v} onChange={() => onChange(v)} />
           {v === "yes" ? "Yes" : v === "no" ? "No" : "Skip"}
         </label>
       ))}
@@ -185,10 +251,10 @@ function Choice({
   );
 }
 
-const OUTCOMES: Record<Outcome, { label: string; cls: string; icon: string }> = {
-  match: { label: "Matches the stated conditions", cls: "bad", icon: "●" },
-  "no-match": { label: "Doesn't match a stated condition", cls: "ok", icon: "○" },
-  unknown: { label: "Need more information", cls: "warn", icon: "?" },
+const OUTCOME_LABEL: Record<Outcome, string> = {
+  match: "Matches the stated conditions",
+  "no-match": "Doesn't match a stated condition",
+  unknown: "Need more information",
 };
 
 function Household({
@@ -201,18 +267,18 @@ function Household({
   setProfile: (p: Profile) => void;
 }) {
   const { outcome, checks } = checkRelevance(notice, profile);
-  const o = OUTCOMES[outcome];
+  const scholarship = notice.category === "scholarship";
   // A match on a water cut is bad news; a match on a scholarship is good news.
-  const tone = notice.category === "scholarship" ? (outcome === "match" ? "ok" : outcome === "no-match" ? "bad" : "warn") : o.cls;
+  const tone =
+    outcome === "unknown" ? "warn" : (outcome === "match") === scholarship ? "ok" : "bad";
   return (
-    <Section id="household" title="Does this affect my family?">
-      <div className={`banner ${tone} big`} role="status">
-        <span aria-hidden="true">{o.icon} </span>
-        <strong>{o.label}</strong>
+    <Section id="household" title="Does this affect my family?" icon="home">
+      <Banner tone={tone} big live>
+        <strong>{OUTCOME_LABEL[outcome]}</strong>
         {outcome !== "unknown" && (
           <>
             <br />
-            {notice.category === "scholarship"
+            {scholarship
               ? outcome === "match"
                 ? "Your household appears to meet what the notice asks."
                 : "Your household may not meet what the notice asks."
@@ -221,7 +287,7 @@ function Household({
                 : "This may not affect your household."}
           </>
         )}
-      </div>
+      </Banner>
       {checks.length === 0 ? (
         <p>The notice states no areas or conditions that can be checked.</p>
       ) : (
@@ -281,12 +347,21 @@ function Household({
   );
 }
 
-function CheckList({ items, lang }: { items: string[]; lang: Language }) {
-  const [done, setDone] = useState<string[]>([]);
+function CheckList({
+  items,
+  lang,
+  done,
+  setDone,
+}: {
+  items: string[];
+  lang: Language;
+  done: string[];
+  setDone: (d: string[]) => void;
+}) {
   return (
     <ul className="checklist" lang={lang}>
       {items.map((item) => (
-        <li key={item}>
+        <li key={item} className={done.includes(item) ? "done" : ""}>
           <label>
             <input
               type="checkbox"
@@ -305,35 +380,31 @@ function VisitReadiness({ notice, lang }: { notice: Notice; lang: Language }) {
   const [have, setHave] = useState<string[]>([]);
   const offices = findRecords(notice).filter((r) => r.kind === "office");
   const docs = notice.documentsRequired;
-  if (docs.length === 0 && !notice.officeLocation) return null;
   const missing = docs.length - have.length;
   return (
-    <Section id="visit" title="Before you leave home">
+    <Section id="visit" title="Before you leave home" icon="bag">
       {docs.length > 0 && (
         <>
           <h3>
             Documents to carry <Tag kind="notice" />
           </h3>
           <p className="muted">Tick each one you already have.</p>
-          <ul className="checklist" lang={lang}>
-            {docs.map((d) => (
-              <li key={d}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={have.includes(d)}
-                    onChange={(e) => setHave(e.target.checked ? [...have, d] : have.filter((x) => x !== d))}
-                  />
-                  <span>{d}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-          <div className={`banner ${missing === 0 ? "ok" : "warn"}`} role="status">
+          <div
+            className="meter"
+            role="progressbar"
+            aria-label="Documents collected"
+            aria-valuemin={0}
+            aria-valuemax={docs.length}
+            aria-valuenow={have.length}
+          >
+            <span style={{ width: `${(have.length / docs.length) * 100}%` }} />
+          </div>
+          <CheckList items={docs} lang={lang} done={have} setDone={setHave} />
+          <Banner tone={missing === 0 ? "ok" : "warn"} live>
             {missing === 0
               ? "You have ticked every listed document."
               : `${missing} of ${docs.length} documents still to collect.`}
-          </div>
+          </Banner>
           <Proof notice={notice} fields={["documents"]} />
         </>
       )}
@@ -361,11 +432,11 @@ function VisitReadiness({ notice, lang }: { notice: Notice; lang: Language }) {
           </p>
         </div>
       ))}
-      <div className="banner warn">
+      <Banner tone="warn">
         {offices.some((r) => r.hours)
           ? "Opening hours come from an outside source. Confirm before travelling."
           : "Opening hours unavailable. Confirm before travelling."}
-      </div>
+      </Banner>
     </Section>
   );
 }
@@ -397,7 +468,7 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
     }
   }
   return (
-    <Section id="ask" title="Ask a question about this notice">
+    <Section id="ask" title="Ask about this notice" icon="chat">
       <form onSubmit={ask}>
         <label className="field">
           Your question
@@ -409,9 +480,16 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
             onChange={(e) => setQuestion(e.target.value)}
           />
         </label>
-        <button disabled={busy || !question.trim()}>{busy ? "Asking…" : "Ask"}</button>
+        <button disabled={busy || !question.trim()}>
+          {busy ? "Asking…" : "Ask"}
+          {!busy && <Icon name="arrow" />}
+        </button>
       </form>
-      {error && <div className="banner bad" role="alert">{error}</div>}
+      {error && (
+        <div role="alert">
+          <Banner tone="bad">{error}</Banner>
+        </div>
+      )}
       {answer && (
         <div role="status">
           <blockquote lang={language}>{answer}</blockquote>
@@ -421,6 +499,31 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
         </div>
       )}
     </Section>
+  );
+}
+
+function Photo({ image }: { image: string | null }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  if (!image) return <p className="muted">This is a synthetic sample, so there is no photo.</p>;
+  return (
+    <>
+      <button className="photo" onClick={() => dialog.current?.showModal()}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="The notice you uploaded" />
+        <span>
+          <Icon name="zoom" /> Tap to enlarge
+        </span>
+      </button>
+      <dialog ref={dialog} className="zoom" aria-label="Enlarged notice photo">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="The notice you uploaded, enlarged" />
+        <form method="dialog">
+          <button>
+            <Icon name="close" /> Close
+          </button>
+        </form>
+      </dialog>
+    </>
   );
 }
 
@@ -447,15 +550,18 @@ function Flow({
   const [checked, setChecked] = useState(false);
   const [hidePersonal, setHidePersonal] = useState(true);
   const [status, setStatus] = useState("");
+  const [doneOfficial, setDoneOfficial] = useState<string[]>([]);
+  const [doneSuggested, setDoneSuggested] = useState<string[]>([]);
 
   const confirmed: ConfirmedEvent | null =
     checked && isIsoDate(date)
       ? { date, startTime: isTime(start) ? start : null, endTime: isTime(end) ? end : null }
       : null;
   const saved = reminders.find((r) => r.threadId === thread.id) ?? null;
-  const records = findRecords(n);
-  const helplines = records.filter((r) => r.kind === "helpline");
+  const helplines = findRecords(n).filter((r) => r.kind === "helpline");
+  const hasVisit = n.documentsRequired.length > 0 || !!n.officeLocation;
   const dateLabel = n.dateKind === "deadline" ? "Deadline" : "When";
+  const shownDate = confirmed?.date ?? n.eventDate;
   const whenText = confirmed
     ? formatWhen(confirmed, lang)
     : n.eventDate
@@ -518,215 +624,271 @@ function Flow({
     { label: "Reference", value: n.referenceNumber, fields: [] },
   ];
 
+  const jumps: [string, string][] = [
+    ["answer", "Summary"],
+    ["household", "My family"],
+    ["todo", "To do"],
+    ...(hasVisit ? ([["visit", "Visit"]] as [string, string][]) : []),
+    ["reminder", "Reminder"],
+    ["family", "Family card"],
+    ["proof", "Proof"],
+  ];
+
   return (
     <>
-      <section className="card answer" aria-labelledby="answer">
-        <p className="eyebrow">{n.documentType ?? "Notice"}</p>
-        <h2 id="answer" lang={lang}>
-          {n.headline ?? n.title ?? "Here is what the notice says"}
-        </h2>
-        <p className="when">
-          <span className="eyebrow">{dateLabel}</span>
-          {whenText ? (
-            <span lang={lang}>{whenText}</span>
-          ) : (
-            <span>Not readable. Please check the notice.</span>
-          )}{" "}
-          <Tag kind={n.eventDate && n.unresolved.length === 0 ? "notice" : "confirm"} />
-        </p>
-        {n.dateText && <p className="muted">As written in the notice: {n.dateText}</p>}
-        <Proof notice={n} fields={["date", "time"]} />
-        <p lang={lang}>{n.explanation}</p>
-        <ReadAloud text={[n.headline, n.explanation, ...n.requirements].filter(Boolean).join(". ")} language={lang} />
-        {n.unresolved.length > 0 && (
-          <div className="banner warn">
-            <strong>Needs your confirmation</strong>
-            <ul>
-              {n.unresolved.map((u) => (
-                <li key={u}>{u}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      <Household notice={n} profile={profile} setProfile={setProfile} />
-
-      <Section id="todo" title="What to do">
-        {n.requirements.length > 0 ? (
-          <>
-            <h3>
-              The notice asks you to <Tag kind="notice" />
-            </h3>
-            <CheckList items={n.requirements} lang={lang} />
-            <Proof notice={n} fields={["requirements"]} />
-          </>
-        ) : (
-          <p>The notice does not ask you to do anything specific.</p>
-        )}
-        {n.suggestions.length > 0 && (
-          <>
-            <h3>
-              You may also want to <Tag kind="ai" />
-            </h3>
-            <CheckList items={n.suggestions} lang={lang} />
-          </>
-        )}
-      </Section>
-
-      <VisitReadiness notice={n} lang={lang} />
-
-      <Section id="reminder" title="Set a reminder">
-        {saved && (
-          <div className="banner ok">
-            Saved reminder: <strong>{formatWhen(saved)}</strong>
-          </div>
-        )}
-        {saved && isIsoDate(date) && (saved.date !== date || (saved.startTime ?? "") !== start) && (
-          <div className="banner warn">
-            Your saved reminder shows the earlier date. Confirm the new date below to update it.
-          </div>
-        )}
-        <p>Check the date against the notice, then approve. Nothing is saved before you approve.</p>
-        <div className="fields">
-          <label className="field">
-            Date
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setChecked(false);
-              }}
-            />
-          </label>
-          <label className="field">
-            From
-            <input type="time" value={start} onChange={(e) => { setStart(e.target.value); setChecked(false); }} />
-          </label>
-          <label className="field">
-            To
-            <input type="time" value={end} onChange={(e) => { setEnd(e.target.value); setChecked(false); }} />
-          </label>
-        </div>
-        {!isIsoDate(date) && (
-          <div className="banner warn">
-            The date could not be read. Type it in from the notice to set a reminder.
-          </div>
-        )}
-        <label className="confirm">
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={!isIsoDate(date)}
-            onChange={(e) => setChecked(e.target.checked)}
-          />
-          <span>I have checked this date and time against the notice</span>
-        </label>
-        <button onClick={approve} disabled={!confirmed}>
-          {saved ? "Approve and update reminder" : "Approve and download reminder"}
-        </button>
-        <p className="muted">The reminder rings 12 hours before.</p>
-      </Section>
-
-      <Section id="family" title="Card for my family">
-        <div className="family-card" lang={lang}>
-          <h3>{L.happened}</h3>
-          <p>{card.happened}</p>
-          <h3>{L.when}</h3>
-          <p>{card.when}</p>
-          {card.where && (
-            <>
-              <h3>{L.where}</h3>
-              <p>{card.where}</p>
-            </>
-          )}
-          {card.official.length > 0 && (
-            <>
-              <h3>{L.todo}</h3>
-              <p className="sub">{L.official}</p>
-              <ul>
-                {card.official.map((x) => (
-                  <li key={x}>{x}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          {card.suggested.length > 0 && (
-            <>
-              <p className="sub">{L.suggested}</p>
-              <ul>
-                {card.suggested.map((x) => (
-                  <li key={x}>{x}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          <p className="sub">
-            {L.source}: {card.source}
-            <br />
-            {L.madeOn}: {card.madeOn}
-            <br />
-            {L.disclaimer}
-          </p>
-        </div>
-        <label className="confirm">
-          <input type="checkbox" checked={hidePersonal} onChange={(e) => setHidePersonal(e.target.checked)} />
-          <span>Hide names, account numbers and addresses</span>
-        </label>
-        <p className="muted">Read the card before you share it. Sharing happens only when you press a button.</p>
-        <div className="actions">
-          <button onClick={shareCard}>Share card</button>
-          <button className="ghost" onClick={copyCard}>Copy text</button>
-          <ReadAloud text={cardText} language={lang} />
-        </div>
-      </Section>
-
-      {status && <div className="banner ok" role="status">{status}</div>}
-
-      <Section id="proof" title="Proof: the facts and the photo">
-        <ul className="facts">
-          {facts
-            .filter((f) => f.value)
-            .map((f) => (
-              <li key={f.label}>
-                <span className="eyebrow">{f.label}</span>
-                <span>
-                  {f.value} <Tag kind="notice" />
-                </span>
-                {f.fields.length > 0 && <Proof notice={n} fields={f.fields} />}
-              </li>
-            ))}
-        </ul>
-        <div id="photo" tabIndex={-1}>
-          {result.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="preview" src={result.image} alt="The notice you uploaded" />
-          ) : (
-            <p className="muted">This is a synthetic sample, so there is no photo.</p>
-          )}
-        </div>
-      </Section>
-
-      <Section id="external" title="Helpful contacts">
-        {helplines.length === 0 && <p>No matching public record was found for this notice.</p>}
-        {helplines.map((r) => (
-          <div key={r.service} className="external">
-            <p>
-              <strong>{r.service}</strong> <Tag kind="external" />
-              <br />
-              {r.detail}
-            </p>
-            <p className="muted">
-              Shown because: {r.matchRule}{" "}
-              <a href={r.sourceUrl} target="_blank" rel="noreferrer">Source</a>, retrieved {r.retrieved}.
-            </p>
-          </div>
+      <nav className="jump" aria-label="Sections of this notice">
+        {jumps.map(([id, label]) => (
+          <a key={id} href={`#${id}`}>
+            {label}
+          </a>
         ))}
-      </Section>
+      </nav>
 
-      <Ask notice={n} language={lang} />
-      {result.model && <p className="muted">Read by {result.model}.</p>}
+      <div className="layout">
+        <div className="col">
+          <section className="card answer" aria-labelledby="answer">
+            <p className="eyebrow">{n.documentType ?? "Notice"}</p>
+            <h2 id="answer" lang={lang}>
+              {n.headline ?? n.title ?? "Here is what the notice says"}
+            </h2>
+            <div className="when">
+              <DateTile date={shownDate} language={lang} />
+              <div>
+                <span className="eyebrow">{dateLabel}</span>
+                <p className="when-text" lang={whenText ? lang : undefined}>
+                  {whenText ?? "Not readable. Please check the notice."}
+                </p>
+                <Tag kind={n.eventDate && n.unresolved.length === 0 ? "notice" : "confirm"} />
+                {n.dateText && <p className="muted">As written: {n.dateText}</p>}
+              </div>
+            </div>
+            <Proof notice={n} fields={["date", "time"]} />
+            <p className="lead" lang={lang}>
+              {n.explanation}
+            </p>
+            <div className="actions">
+              <ReadAloud
+                text={[n.headline, n.explanation, ...n.requirements].filter(Boolean).join(". ")}
+                language={lang}
+              />
+            </div>
+            {n.unresolved.length > 0 && (
+              <Banner tone="warn">
+                <strong>Needs your confirmation</strong>
+                <ul>
+                  {n.unresolved.map((u) => (
+                    <li key={u}>{u}</li>
+                  ))}
+                </ul>
+              </Banner>
+            )}
+          </section>
+
+          <Household notice={n} profile={profile} setProfile={setProfile} />
+
+          <Section id="todo" title="What to do" icon="list">
+            {n.requirements.length > 0 ? (
+              <>
+                <h3>
+                  The notice asks you to <Tag kind="notice" />
+                </h3>
+                <CheckList items={n.requirements} lang={lang} done={doneOfficial} setDone={setDoneOfficial} />
+                <Proof notice={n} fields={["requirements"]} />
+              </>
+            ) : (
+              <p>The notice does not ask you to do anything specific.</p>
+            )}
+            {n.suggestions.length > 0 && (
+              <>
+                <h3>
+                  You may also want to <Tag kind="ai" />
+                </h3>
+                <CheckList items={n.suggestions} lang={lang} done={doneSuggested} setDone={setDoneSuggested} />
+              </>
+            )}
+          </Section>
+
+          {hasVisit && <VisitReadiness notice={n} lang={lang} />}
+
+          <Section id="reminder" title="Set a reminder" icon="calendar">
+            {saved && (
+              <Banner tone="ok">
+                Saved reminder: <strong>{formatWhen(saved)}</strong>
+              </Banner>
+            )}
+            {saved && isIsoDate(date) && (saved.date !== date || (saved.startTime ?? "") !== start) && (
+              <Banner tone="warn">
+                Your saved reminder shows the earlier date. Confirm the new date below to update it.
+              </Banner>
+            )}
+            <p>Check the date against the notice, then approve. Nothing is saved before you approve.</p>
+            <div className="fields">
+              <label className="field">
+                Date
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => {
+                    setDate(e.target.value);
+                    setChecked(false);
+                  }}
+                />
+              </label>
+              <label className="field">
+                From
+                <input
+                  type="time"
+                  value={start}
+                  onChange={(e) => {
+                    setStart(e.target.value);
+                    setChecked(false);
+                  }}
+                />
+              </label>
+              <label className="field">
+                To
+                <input
+                  type="time"
+                  value={end}
+                  onChange={(e) => {
+                    setEnd(e.target.value);
+                    setChecked(false);
+                  }}
+                />
+              </label>
+            </div>
+            {!isIsoDate(date) && (
+              <Banner tone="warn">
+                The date could not be read. Type it in from the notice to set a reminder.
+              </Banner>
+            )}
+            <label className={`confirm${checked ? " on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!isIsoDate(date)}
+                onChange={(e) => setChecked(e.target.checked)}
+              />
+              <span>I have checked this date and time against the notice</span>
+            </label>
+            <button className="wide" onClick={approve} disabled={!confirmed}>
+              <Icon name="calendar" />
+              {saved ? "Approve and update reminder" : "Approve and download reminder"}
+            </button>
+            <p className="muted">The reminder rings 12 hours before.</p>
+          </Section>
+
+          <Section id="family" title="Card for my family" icon="card">
+            <div className="family-card" lang={lang}>
+              <div className="family-head">{n.documentType ?? "Notice"}</div>
+              <div className="family-body">
+                <h3>{L.happened}</h3>
+                <p>{card.happened}</p>
+                <h3>{L.when}</h3>
+                <p>{card.when}</p>
+                {card.where && (
+                  <>
+                    <h3>{L.where}</h3>
+                    <p>{card.where}</p>
+                  </>
+                )}
+                {card.official.length > 0 && (
+                  <>
+                    <h3>{L.todo}</h3>
+                    <p className="sub">{L.official}</p>
+                    <ul>
+                      {card.official.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {card.suggested.length > 0 && (
+                  <>
+                    <p className="sub">{L.suggested}</p>
+                    <ul className="soft">
+                      {card.suggested.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <p className="sub foot">
+                  {L.source}: {card.source}
+                  <br />
+                  {L.madeOn}: {card.madeOn}
+                  <br />
+                  {L.disclaimer}
+                </p>
+              </div>
+            </div>
+            <label className={`confirm${hidePersonal ? " on" : ""}`}>
+              <input type="checkbox" checked={hidePersonal} onChange={(e) => setHidePersonal(e.target.checked)} />
+              <span>Hide names, account numbers and addresses</span>
+            </label>
+            <p className="muted">Read the card before you share it. Sharing happens only when you press a button.</p>
+            <div className="actions">
+              <button onClick={shareCard}>
+                <Icon name="share" /> Share card
+              </button>
+              <button className="ghost" onClick={copyCard}>
+                <Icon name="copy" /> Copy text
+              </button>
+              <ReadAloud text={cardText} language={lang} />
+            </div>
+          </Section>
+
+          <Ask notice={n} language={lang} />
+        </div>
+
+        <aside className="side">
+          <Section id="proof" title="Proof" icon="search">
+            <p className="muted">The facts as read, and your photo to check them against.</p>
+            <ul className="facts">
+              {facts
+                .filter((f) => f.value)
+                .map((f) => (
+                  <li key={f.label}>
+                    <span className="eyebrow">{f.label}</span>
+                    <span>{f.value}</span> <Tag kind="notice" />
+                    {f.fields.length > 0 && <Proof notice={n} fields={f.fields} />}
+                  </li>
+                ))}
+            </ul>
+            <div id="photo" tabIndex={-1}>
+              <Photo image={result.image} />
+            </div>
+          </Section>
+
+          <Section id="external" title="Helpful contacts" icon="phone">
+            {helplines.length === 0 && <p>No matching public record was found for this notice.</p>}
+            {helplines.map((r) => (
+              <div key={r.service} className="external">
+                <p>
+                  <strong>{r.service}</strong> <Tag kind="external" />
+                  <br />
+                  {r.detail}
+                </p>
+                <p className="muted">
+                  Shown because: {r.matchRule}{" "}
+                  <a href={r.sourceUrl} target="_blank" rel="noreferrer">Source</a>, retrieved {r.retrieved}.
+                </p>
+              </div>
+            ))}
+          </Section>
+          {result.model && <p className="muted center">Read by {result.model}</p>}
+        </aside>
+      </div>
+
+      {status && (
+        <div className="toast" role="status">
+          <Icon name="check" />
+          <p>{status}</p>
+          <button className="link" aria-label="Dismiss message" onClick={() => setStatus("")}>
+            <Icon name="close" />
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -739,15 +901,17 @@ export default function Home() {
   const [thread, setThread] = useState<Thread | null>(null);
   const [busy, setBusy] = useState<"original" | "revised" | null>(null);
   const [error, setError] = useState("");
+  const [dragging, setDragging] = useState(false);
 
   async function onFile(file: File | undefined, slot: "original" | "revised") {
-    if (!file) return;
+    if (!file || busy) return;
     setError("");
     setBusy(slot);
     try {
       const result = await extract(file, language);
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
+      showResult("result");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -762,6 +926,7 @@ export default function Home() {
       original: { notice, image: null, source: "fixture", language: "en" },
       revised: null,
     });
+    showResult("result");
   }
 
   const current = thread ? (thread.revised ?? thread.original) : null;
@@ -771,7 +936,8 @@ export default function Home() {
 
   const picker = (slot: "original" | "revised", capture: boolean, label: string, ghost = false) => (
     <label className={`file${ghost ? " ghost" : ""}`}>
-      {busy === slot ? "Reading…" : label}
+      <Icon name={capture ? "camera" : "image"} />
+      {label}
       <input
         type="file"
         accept="image/*"
@@ -786,179 +952,266 @@ export default function Home() {
   );
 
   return (
-    <main style={{ "--scale": scale } as CSSProperties}>
-      <a className="skip" href="#start">Skip to upload</a>
-      <header className="hero">
-        <h1>Notice → Action</h1>
-        <p>
-          Know what a notice means for your household, what changed, and what to do next, with
-          proof.
-        </p>
+    <div className="app" style={{ "--scale": scale } as CSSProperties}>
+      <a className="skip" href="#start">
+        Skip to upload
+      </a>
+      <header className="topbar">
+        <div className="brand">
+          <span className="mark" aria-hidden="true">
+            <Icon name="arrow" />
+          </span>
+          Notice → Action
+        </div>
+        <div className="controls">
+          <div role="group" aria-label="Text size" className="sizes">
+            {SCALES.map((s) => (
+              <button
+                key={s.value}
+                className={scale === s.value ? "on" : ""}
+                aria-pressed={scale === s.value}
+                aria-label={s.name}
+                onClick={() => setScale(s.value)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <label className="lang">
+            <span className="sr">Explain in</span>
+            <select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
+              {(Object.keys(LANGUAGES) as Language[]).map((l) => (
+                <option key={l} value={l}>
+                  {LANGUAGES[l].label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </header>
 
-      <div className="toolbar">
-        <div role="group" aria-label="Text size" className="sizes">
-          {SCALES.map((s) => (
-            <button
-              key={s.value}
-              className={scale === s.value ? "" : "ghost"}
-              aria-pressed={scale === s.value}
-              aria-label={s.name}
-              onClick={() => setScale(s.value)}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <label className="field inline">
-          Explain in
-          <select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
-            {(Object.keys(LANGUAGES) as Language[]).map((l) => (
-              <option key={l} value={l}>
-                {LANGUAGES[l].label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <section className="card" id="start" aria-labelledby="start-title">
-        <h2 id="start-title">
-          <span className="step">1</span> Show us the notice
-        </h2>
-        <div className="actions">
-          {picker("original", true, "📷 Take a photo")}
-          {picker("original", false, "🖼 Choose a photo", true)}
-        </div>
-        {busy && (
-          <p role="status" className="busy">
-            Reading the notice. This can take up to a minute. Please wait.
-          </p>
-        )}
-        <p className="muted">
-          Your photo is sent to a hosted AI service (Gemma 4 through OpenRouter) to be read. Do not
-          upload private documents. Your household details and reminders stay in this browser.
-          This is not an official government service.
-        </p>
-        <details>
-          <summary>No notice at hand? Try a sample</summary>
-          <p className="muted">Hand-written samples. No AI is used for these.</p>
-          <div className="actions">
-            <button className="ghost" onClick={() => loadFixture(FIXTURE_WATER)} disabled={busy !== null}>
-              Sample water-cut notice
-            </button>
-            <button className="ghost" onClick={() => loadFixture(FIXTURE_SCHOLARSHIP)} disabled={busy !== null}>
-              Sample scholarship notice
-            </button>
-          </div>
-        </details>
-      </section>
-
-      {error && <div className="banner bad" role="alert">{error}</div>}
-
-      {thread && current && (
-        <>
-          <h2 className="divider">
-            <span className="step">2</span> What it means for you
-          </h2>
-          {fixture && (
-            <div className="banner bad">
-              SAMPLE: this is a hand-written synthetic notice. It is not AI output and not a real
-              notice.
-            </div>
-          )}
-
-          {changes && (
-            <section className="card changed" aria-labelledby="changed">
-              <h2 id="changed">What changed?</h2>
-              {changes.length === 0 ? (
-                <p>Nothing important changed: the date, time, areas, office and documents are the same.</p>
-              ) : (
-                <>
-                  <ul className="changes">
-                    {changes.map((c) => (
-                      <li key={c.field}>
-                        <p>{c.sentence}</p>
-                        <Proof notice={current.notice} fields={[c.field]} />
-                      </li>
-                    ))}
-                  </ul>
-                  {updates.length > 0 && (
-                    <div className="banner warn big" role="status">
-                      Your plan needs {updates.length} update{updates.length === 1 ? "" : "s"}:{" "}
-                      {updates.join(", ")}.
-                    </div>
-                  )}
-                </>
-              )}
-              <p className="muted">Everything below now shows the newer notice.</p>
-            </section>
-          )}
-
-          <Flow
-            key={`${thread.id}-${thread.revised ? "r" : "o"}`}
-            thread={thread}
-            result={current}
-            profile={profile}
-            setProfile={setProfile}
-            reminders={reminders}
-            setReminders={setReminders}
-          />
-
-          <section className="card" aria-labelledby="revise">
-            <h2 id="revise">
-              <span className="step">3</span> Got a corrected notice later?
-            </h2>
+      <main>
+        {!thread && (
+          <section className="hero">
+            <h1>Understand any public notice in a minute.</h1>
             <p>
-              Add the newer notice here only if it replaces the one above. We will show what changed
-              and help you update your reminder.
+              Know what it means for your household, what changed, and what to do next, with proof.
             </p>
-            <div className="actions">
-              {picker("revised", true, "📷 Photo of the new notice")}
-              {picker("revised", false, "🖼 Choose a photo", true)}
-              {thread.original.notice === FIXTURE_WATER && !thread.revised && (
-                <button
-                  className="ghost"
-                  onClick={() =>
-                    setThread({
-                      ...thread,
-                      revised: { notice: FIXTURE_WATER_REVISED, image: null, source: "fixture", language: "en" },
-                    })
-                  }
-                >
-                  Sample corrected notice
-                </button>
-              )}
-            </div>
           </section>
-        </>
-      )}
+        )}
 
-      {reminders.length > 0 && (
-        <section className="card" aria-labelledby="saved">
-          <h2 id="saved">My saved reminders</h2>
-          <ul className="saved">
-            {reminders.map((r) => (
-              <li key={r.threadId}>
-                <div>
-                  <strong>{r.title}</strong>
-                  <br />
-                  {formatWhen(r)}
-                  {r.sequence > 0 && <span className="muted"> (updated {r.sequence}×)</span>}
+        <section
+          id="start"
+          className={`card upload${dragging ? " dragging" : ""}${thread ? " compact" : ""}`}
+          aria-labelledby="start-title"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            onFile(e.dataTransfer.files?.[0], "original");
+          }}
+        >
+          <h2 id="start-title" className="section-title">
+            <span className="badge num">1</span>
+            {thread ? "Read another notice" : "Show us the notice"}
+          </h2>
+          {busy ? (
+            <div className="reading" role="status">
+              <div className="bar" aria-hidden="true">
+                <span />
+              </div>
+              <p>
+                <strong>Reading the notice…</strong>
+                <br />
+                This can take up to a minute. Please keep this page open.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="actions">
+                {picker("original", true, "Take a photo")}
+                {picker("original", false, "Choose a photo", true)}
+              </div>
+              {!thread && <p className="muted drop-hint">On a computer you can also drop a photo here.</p>}
+            </>
+          )}
+          {!thread && (
+            <>
+              <p className="muted">
+                Your photo is sent to a hosted AI service (Gemma 4 through OpenRouter) to be read. Do
+                not upload private documents. Your household details and reminders stay in this
+                browser. This is not an official government service.
+              </p>
+              <div className="samples">
+                <p className="eyebrow">No notice at hand? Try a sample (no AI used)</p>
+                <div className="actions">
+                  <button className="ghost" onClick={() => loadFixture(FIXTURE_WATER)} disabled={busy !== null}>
+                    Water-cut notice
+                  </button>
+                  <button className="ghost" onClick={() => loadFixture(FIXTURE_SCHOLARSHIP)} disabled={busy !== null}>
+                    Scholarship notice
+                  </button>
                 </div>
-                <button
-                  className="ghost"
-                  aria-label={`Remove reminder for ${r.title}`}
-                  onClick={() => setReminders(reminders.filter((x) => x.threadId !== r.threadId))}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="muted">Kept only in this browser. Removing one here does not change your calendar.</p>
+              </div>
+            </>
+          )}
         </section>
-      )}
-    </main>
+
+        {!thread && (
+          <section className="how-wrap" aria-label="How it works">
+            <ol className="how">
+              <li>
+                <span className="badge">
+                  <Icon name="camera" />
+                </span>
+                <div>
+                  <strong>Photograph it</strong>
+                  <span>Kannada or English</span>
+                </div>
+              </li>
+              <li>
+                <span className="badge">
+                  <Icon name="search" />
+                </span>
+                <div>
+                  <strong>See what it means</strong>
+                  <span>With the source text</span>
+                </div>
+              </li>
+              <li>
+                <span className="badge">
+                  <Icon name="calendar" />
+                </span>
+                <div>
+                  <strong>Act on it</strong>
+                  <span>Reminder and family card</span>
+                </div>
+              </li>
+            </ol>
+          </section>
+        )}
+
+        {error && (
+          <div role="alert">
+            <Banner tone="bad">{error}</Banner>
+          </div>
+        )}
+
+        {thread && current && (
+          <>
+            <h2 id="result" tabIndex={-1} className="divider section-title">
+              <span className="badge num">2</span> What it means for you
+            </h2>
+            {fixture && (
+              <Banner tone="bad">
+                <strong>Sample.</strong> This is a hand-written synthetic notice. It is not AI output
+                and not a real notice.
+              </Banner>
+            )}
+
+            {changes && (
+              <Section id="changed" title="What changed?" icon="refresh" className="changed">
+                {changes.length === 0 ? (
+                  <p>Nothing important changed: the date, time, areas, office and documents are the same.</p>
+                ) : (
+                  <>
+                    <ul className="changes">
+                      {changes.map((c) => (
+                        <li key={c.field}>
+                          <p>{c.sentence}</p>
+                          <Proof notice={current.notice} fields={[c.field]} />
+                        </li>
+                      ))}
+                    </ul>
+                    {updates.length > 0 && (
+                      <Banner tone="warn" big live>
+                        Your plan needs {updates.length} update{updates.length === 1 ? "" : "s"}:{" "}
+                        {updates.join(", ")}.
+                      </Banner>
+                    )}
+                  </>
+                )}
+                <p className="muted">Everything below now shows the newer notice.</p>
+              </Section>
+            )}
+
+            <Flow
+              key={`${thread.id}-${thread.revised ? "r" : "o"}`}
+              thread={thread}
+              result={current}
+              profile={profile}
+              setProfile={setProfile}
+              reminders={reminders}
+              setReminders={setReminders}
+            />
+
+            <section className="card" aria-labelledby="revise">
+              <h2 id="revise" className="section-title">
+                <span className="badge num">3</span> Got a corrected notice later?
+              </h2>
+              <p>
+                Add the newer notice here only if it replaces the one above. We will show what
+                changed and help you update your reminder.
+              </p>
+              <div className="actions">
+                {picker("revised", true, "Photo of the new notice")}
+                {picker("revised", false, "Choose a photo", true)}
+                {thread.original.notice === FIXTURE_WATER && !thread.revised && (
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setThread({
+                        ...thread,
+                        revised: { notice: FIXTURE_WATER_REVISED, image: null, source: "fixture", language: "en" },
+                      });
+                      showResult("result");
+                    }}
+                  >
+                    Sample corrected notice
+                  </button>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
+        {reminders.length > 0 && (
+          <Section id="saved" title="My saved reminders" icon="calendar">
+            <ul className="saved">
+              {reminders.map((r) => (
+                <li key={r.threadId}>
+                  <DateTile date={r.date} language="en" />
+                  <div>
+                    <strong>{r.title}</strong>
+                    <br />
+                    {formatWhen(r)}
+                    {r.sequence > 0 && <span className="muted"> (updated {r.sequence}×)</span>}
+                  </div>
+                  <button
+                    className="ghost small"
+                    aria-label={`Remove reminder for ${r.title}`}
+                    onClick={() => setReminders(reminders.filter((x) => x.threadId !== r.threadId))}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="muted">Kept only in this browser. Removing one here does not change your calendar.</p>
+          </Section>
+        )}
+      </main>
+
+      <footer>
+        <p>
+          Notices are read by Gemma 4, an open-weight model. It can make mistakes, so always check
+          the original notice. Not an official government service.
+        </p>
+      </footer>
+    </div>
   );
 }
