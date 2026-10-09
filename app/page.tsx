@@ -74,11 +74,30 @@ async function toDataUrl(file: File): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.88);
 }
 
-async function extract(image: string, language: Language): Promise<Result> {
+// Enlarged top and bottom halves of the same photo, overlapping in the middle.
+// The model sees every image at a fixed, low resolution, so these let it read
+// small print that is lost in the full-page view.
+async function toTiles(file: File): Promise<string[]> {
+  const bitmap = await createImageBitmap(file);
+  if (bitmap.height < 900) return [];
+  const height = Math.round(bitmap.height * 0.56);
+  return [0, bitmap.height - height].map((top) => {
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(height * scale);
+    canvas
+      .getContext("2d")!
+      .drawImage(bitmap, 0, top, bitmap.width, height, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.88);
+  });
+}
+
+async function extract(image: string, tiles: string[], language: Language): Promise<Result> {
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image, language }),
+    body: JSON.stringify({ image, tiles, language }),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body?.notice) {
@@ -1131,7 +1150,7 @@ export default function Home() {
     try {
       const image = await toDataUrl(file);
       setPending({ slot, image });
-      const result = await extract(image, language);
+      const result = await extract(image, await toTiles(file), language);
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
       showResult("result");
@@ -1323,7 +1342,7 @@ export default function Home() {
             </section>
 
             <p className="privacy">
-              <Icon name="info" /> {t("Your photo is sent to a hosted AI service (Gemma 4 through OpenRouter) to be read, so do not upload private documents. Your household details and reminders stay in this browser. This is not an official government service.")}
+              <Icon name="info" /> {t("Your photo is sent to a hosted AI service (Gemma 4) to be read, so do not upload private documents. Your household details and reminders stay in this browser. This is not an official government service.")}
             </p>
           </>
         ) : (

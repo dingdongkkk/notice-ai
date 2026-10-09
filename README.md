@@ -33,18 +33,27 @@ The whole interface switches between English, Kannada and Hindi with the languag
 
 ## Model
 
-Notice reading is done by **Gemma 4** (`google/gemma-4-31b-it:free`), an open-weight model, called through OpenRouter from a server route. One request per image extracts the facts and writes the explanation. A follow-up question is a second, text-only request. Everything else (household check, checklists, calendar file, family card, revision comparison) is plain code with no AI calls.
+Notice reading is done by **Gemma 4**, an open-weight model. The app can call it through either of two hosts:
+
+- **Google AI Studio** (`GEMINI_API_KEY`), using `gemma-4-26b-a4b-it` by default. This is what the app has been tested with.
+- **OpenRouter** (`OPENROUTER_API_KEY`), using `google/gemma-4-31b-it:free`. This path has not been run.
+
+One request per photo extracts the facts and writes the explanation. The browser sends the whole photo plus enlarged top and bottom halves, because the host shows the model each image at a fixed low resolution. The model's thinking mode is switched off to keep answers fast. A follow-up question is a second, text-only request. Everything else (household check, checklists, calendar file, family card, revision comparison) is plain code with no AI calls.
+
+### What has been tested live
+
+Two synthetic water-cut notices in `samples/` (one English, one Kannada) were read through the running app, each taking about 20 seconds. Both gave the right date, time and areas. On the Kannada one the model misread a vowel in one place name ("ಮತ್ತಿಕೇರೆ" for "ಮತ್ತಿಕೆರೆ"), which is why area matching allows small spelling differences. A synthetic English scholarship notice was also read through the page itself in about 20 seconds, with the right deadline, office and conditions. No real photographed notice, circular or legal paper has been read live yet. The larger `gemma-4-31b-it` model took 30 seconds to two minutes in the same tests and sometimes returned "high demand" errors.
 
 ## Where your data goes
 
-- The photo, and the facts read from it when you ask a follow-up question, are sent to OpenRouter. The app says so before upload. Nothing is processed on the device.
+- The photo, and the facts read from it when you ask a follow-up question, are sent to the model host (Google AI Studio or OpenRouter). The app says so before upload. Nothing is processed on the device.
 - The household profile, text size, language and saved reminders are kept in the browser's local storage and are not sent to the server or the model.
 - The server keeps a result in memory to avoid repeating a request for the same image; it writes nothing to disk.
 - Sharing happens only when you press Share or Copy.
 
 ## Run it
 
-Requires Node.js 20 or newer and an OpenRouter API key.
+Requires Node.js 20 or newer and a Google AI Studio or OpenRouter API key.
 
 ```bash
 npm install
@@ -55,8 +64,7 @@ npm run dev
 Put your key in `.env.local` (Git-ignored), then open http://localhost:3000.
 
 ```dotenv
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=google/gemma-4-31b-it:free
+GEMINI_API_KEY=your_key_here
 ```
 
 "Try an example" loads a hand-written water-cut notice (with a corrected version), scholarship notice, government circular or legal notice. Samples are labelled on screen and never pass through the model.
@@ -67,7 +75,8 @@ OPENROUTER_MODEL=google/gemma-4-31b-it:free
 |---|---|
 | `app/api/extract/route.ts` | Sends the image to Gemma 4, validates the answer, allows one repair request, reports rate limits and timeouts |
 | `app/api/ask/route.ts` | Answers a follow-up question from the validated facts only |
-| `lib/openrouter.ts` | The one place that talks to OpenRouter; maps failures to messages |
+| `lib/openrouter.ts` | The one place that talks to the model host (Google AI Studio or OpenRouter); maps failures to messages |
+| `samples/` | Two synthetic notice images for testing, and the script that draws them |
 | `lib/schema.ts` | Zod validation; malformed dates and times become unresolved instead of being passed on |
 | `lib/prompt.ts` | Prompts; text inside the notice is treated as data, not instructions |
 | `lib/actions.ts` | Household check, calendar file, saved reminders, family card, revision comparison |
@@ -90,8 +99,8 @@ Key dependencies: Next.js, React, Zod.
 - Nothing here is legal advice, and no lawyer has reviewed how legal documents are explained.
 - A calendar may or may not treat the re-downloaded file as an update to the earlier event.
 - Read-aloud uses the device's own voices; many devices have no Kannada voice.
-- The free endpoint is rate limited and can be unavailable.
-- The live model has not yet been run on real documents of any of the four kinds. This is not an official government service and gives no legal advice.
+- The model host is rate limited and can be busy; the app shows a message and does not retry by itself.
+- Live testing so far is two synthetic water-cut notices; see "What has been tested live". This is not an official government service and gives no legal advice.
 
 ## License
 

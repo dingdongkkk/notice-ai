@@ -156,7 +156,23 @@ export function parseNotice(input: unknown): Notice {
     unresolved.push(`${label} could not be read as a time ("${v}")`);
     return null;
   };
-  const eventDate = date(raw.eventDate, "Date");
+  const endDate = date(raw.endDate, "End date");
+  let eventDate = date(raw.eventDate, "Date");
+  // The model sometimes files a deadline under endDate only.
+  if (!eventDate && endDate) eventDate = endDate;
+  if (!eventDate) {
+    // A single day-month-year date in the notice's own wording can be worked
+    // out in code. It is flagged so the reader confirms it.
+    const written = [...(raw.dateText ?? "").matchAll(/(?<!\d)(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?!\d)/g)];
+    if (written.length === 1) {
+      const [, d, m, y] = written[0];
+      const iso = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+      if (isIsoDate(iso)) {
+        eventDate = iso;
+        unresolved.push(`The date was worked out from "${raw.dateText}" as day-month-year. Please confirm it.`);
+      }
+    }
+  }
   if (!eventDate && !unresolved.some((u) => /date/i.test(u))) {
     unresolved.push("No date could be read from the notice");
   }
@@ -167,7 +183,7 @@ export function parseNotice(input: unknown): Notice {
       raw.dateKind === "deadline" || raw.dateKind === "effective" ? raw.dateKind : "event",
     explanation: raw.explanation,
     eventDate,
-    endDate: date(raw.endDate, "End date"),
+    endDate,
     startTime: time(raw.startTime, "Start time"),
     endTime: time(raw.endTime, "End time"),
     unresolved,

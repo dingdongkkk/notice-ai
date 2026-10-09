@@ -166,9 +166,38 @@ export type Check = { outcome: Outcome; reason: string; field: string };
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
+// Place names are spelled many ways in English (Mathikere, Mattikere), so
+// compare a simplified form and allow a letter or two of difference.
+function fold(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}]/gu, "")
+    .replace(/h/g, "")
+    .replace(/(.)\1+/gu, "$1");
+}
+
+function distance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) {
+      next[j] = Math.min(next[j - 1] + 1, row[j] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    row = next;
+  }
+  return row[b.length];
+}
+
 function areaListed(n: Notice, area: string): boolean {
-  const q = norm(area);
-  return n.affectedAreas.some((a) => norm(a).includes(q) || q.includes(norm(a)));
+  const q = fold(area);
+  if (q.length < 3) return false;
+  // An area may be written as "ಮತ್ತಿಕೆರೆ (Mathikere)"; try each part.
+  const names = n.affectedAreas.flatMap((a) => [a, ...a.split(/[()]/)]).map(fold).filter(Boolean);
+  return names.some((name) => {
+    if (name.includes(q) || q.includes(name)) return true;
+    const allowed = Math.min(q.length, name.length) >= 9 ? 2 : Math.min(q.length, name.length) >= 6 ? 1 : 0;
+    return distance(name, q) <= allowed;
+  });
 }
 
 // Compares the notice's stated areas and conditions with the household

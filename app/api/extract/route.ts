@@ -4,7 +4,8 @@ import { MODEL, NO_KEY_MESSAGE, apiKey, chat, describeFailure, type Message } fr
 import { extractionPrompt, REPAIR_PROMPT } from "@/lib/prompt";
 import { parseNotice, toLanguage, type Notice } from "@/lib/schema";
 
-const MAX_IMAGE_CHARS = 8_000_000;
+const MAX_IMAGE_CHARS = 12_000_000;
+const IMAGE_URL = /^data:image\/(jpeg|png|webp);base64,/;
 
 // Per-process cache so the same image and language never costs a second request.
 const cache = new Map<string, Notice>();
@@ -27,14 +28,20 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const image: unknown = body?.image;
   const language = toLanguage(body?.language);
-  if (typeof image !== "string" || !/^data:image\/(jpeg|png|webp);base64,/.test(image)) {
+  if (typeof image !== "string" || !IMAGE_URL.test(image)) {
     return fail("Upload a JPEG, PNG or WebP photo of the notice.", 400);
   }
-  if (image.length > MAX_IMAGE_CHARS) {
+  // Optional enlargements of parts of the same photo, to help with small print.
+  const tiles: string[] = Array.isArray(body?.tiles)
+    ? body.tiles
+        .filter((t: unknown): t is string => typeof t === "string" && IMAGE_URL.test(t))
+        .slice(0, 2)
+    : [];
+  if (image.length + tiles.join("").length > MAX_IMAGE_CHARS) {
     return fail("That image is too large. Try a smaller photo.", 413);
   }
 
-  const cacheKey = createHash("sha256").update(`${MODEL}|${language}|${image}`).digest("hex");
+  const cacheKey = createHash("sha256").update(`${MODEL}|${language}|${image}|${tiles.join("|")}`).digest("hex");
   const cached = cache.get(cacheKey);
   if (cached) return NextResponse.json({ notice: cached, model: MODEL, cached: true });
 
@@ -43,8 +50,9 @@ export async function POST(req: Request) {
     {
       role: "user",
       content: [
-        { type: "text", text: extractionPrompt(language, today) },
+        { type: "text", text: extractionPrompt(language, today, tiles.length) },
         { type: "image_url", image_url: { url: image } },
+        ...tiles.map((url) => ({ type: "image_url", image_url: { url } })),
       ],
     },
   ];
