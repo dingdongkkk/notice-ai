@@ -2,7 +2,7 @@
 
 **Know what a notice means for your household, what changed, and what to do next, with proof.**
 
-Photograph a public notice (a Bengaluru water-cut circular or a scholarship notice, in Kannada or English) and the app:
+Photograph an official document in Kannada or English and the app turns it into a plan. It is built around four kinds: water-cut notices, scholarship notices, government circulars and orders, and legal notices or court papers. For each one it:
 
 1. **Explains it** in English, Kannada or Hindi, in short sentences, with a read-aloud button.
 2. **Shows where each fact came from.** Every date, area, amount, document and condition has a "Show me where" button that reveals the passage it was read from, next to the photo. Facts are labelled *From your notice*, *External source* or *Needs confirmation*.
@@ -12,6 +12,11 @@ Photograph a public notice (a Bengaluru water-cut circular or a scholarship noti
 6. **Makes a card for the family.** A large-text card (what happened, when, what to do) that separates the notice's own instructions from suggested precautions, hides personal details by default, and is shared through the phone's share sheet.
 7. **Handles a corrected notice.** Upload the newer version and the app says what changed in plain sentences ("The date moved later by 2 days"), counts the updates your plan needs, and updates the saved reminder instead of adding a second one.
 8. **Answers follow-up questions** from the facts already read from the notice.
+9. **Explains the fine print.** For circulars and legal papers it lists what the document says will happen if you do not act, the laws and rules it names, and its official words in everyday language.
+
+### Legal documents
+
+The app explains what a legal document says. It does not say whether a claim is valid, what you should do about it, or what a court will decide, and the model is instructed not to. A "This is not legal advice" notice is shown on every legal document, with the NALSA free legal aid helpline (15100). A deadline counted from another event, such as "within 15 days of receipt", is left unresolved for you to work out and enter.
 
 Built for Hacktoberfest Hack Day Bengaluru '26 (PS 01, Multimodal Community Intelligence).
 
@@ -54,7 +59,7 @@ OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=google/gemma-4-31b-it:free
 ```
 
-"Try a sample" loads a hand-written water-cut notice (with a corrected version) or a scholarship notice. Samples are labelled on screen and never pass through the model.
+"Try an example" loads a hand-written water-cut notice (with a corrected version), scholarship notice, government circular or legal notice. Samples are labelled on screen and never pass through the model.
 
 ## How it works
 
@@ -80,11 +85,13 @@ Key dependencies: Next.js, React, Zod.
 - Kannada and Hindi output, including the family card labels, has not been reviewed by a fluent reader.
 - The household check is a plain comparison. Area matching misses spelling differences and "surrounding areas"; conditions other than student or senior citizen are reported as "cannot be checked". It never decides eligibility.
 - Personal details are hidden using what the model listed plus long digit runs. Read the card before sharing.
-- External records (BWSSB helpline 1916, head office address) come from third-party pages, not BWSSB's own site, and no opening hours are held.
+- External records for BWSSB (helpline 1916, head office address) come from third-party pages, not BWSSB's own site, and no opening hours are held. The NALSA helpline (15100) is taken from nalsa.gov.in.
+- Legal papers usually carry names, addresses and case numbers, and the photo is sent to a hosted service. Cover what you can before photographing, or do not upload it.
+- Nothing here is legal advice, and no lawyer has reviewed how legal documents are explained.
 - A calendar may or may not treat the re-downloaded file as an update to the earlier event.
 - Read-aloud uses the device's own voices; many devices have no Kannada voice.
 - The free endpoint is rate limited and can be unavailable.
-- Only water-interruption and scholarship style notices have been considered. This is not an official government service and gives no legal advice.
+- The live model has not yet been run on real documents of any of the four kinds. This is not an official government service and gives no legal advice.
 
 ## License
 

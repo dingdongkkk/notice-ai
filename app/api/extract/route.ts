@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   ];
 
   try {
-    const first = await chat(messages, key, 1800);
+    const first = await chat(messages, key, 2600);
     let notice: Notice;
     try {
       notice = toNotice(first);
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       const second = await chat(
         [...messages, { role: "assistant", content: first }, { role: "user", content: REPAIR_PROMPT }],
         key,
-        1800,
+        2600,
       );
       try {
         notice = toNotice(second);

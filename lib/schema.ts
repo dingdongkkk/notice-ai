@@ -33,6 +33,17 @@ const conditions = z
     }),
   );
 
+export type KeyTerm = { term: string; meaning: string };
+
+const keyTerms = z
+  .array(z.object({ term: text, meaning: text }).nullish())
+  .nullish()
+  .transform((v) =>
+    (v ?? []).flatMap((k): KeyTerm[] =>
+      k?.term && k.meaning ? [{ term: k.term, meaning: k.meaning }] : [],
+    ),
+  );
+
 const RawNotice = z.object({
   category: text,
   documentType: text,
@@ -40,6 +51,7 @@ const RawNotice = z.object({
   title: text,
   headline: text,
   referenceNumber: text,
+  addressedTo: text,
   originalLanguage: text,
   affectedAreas: list,
   dateKind: text,
@@ -53,6 +65,9 @@ const RawNotice = z.object({
   documentsRequired: list,
   conditions,
   requirements: list,
+  consequences: list,
+  lawsCited: list,
+  keyTerms,
   suggestions: list,
   personalDetails: list,
   explanation: text,
@@ -67,7 +82,8 @@ const RawNotice = z.object({
   unresolved: list,
 });
 
-export type Category = "water" | "scholarship" | "other";
+export type Category = "water" | "scholarship" | "circular" | "legal" | "other";
+const CATEGORIES: Category[] = ["water", "scholarship", "circular", "legal"];
 
 export type Notice = {
   category: Category;
@@ -76,9 +92,10 @@ export type Notice = {
   title: string | null;
   headline: string | null;
   referenceNumber: string | null;
+  addressedTo: string | null;
   originalLanguage: string | null;
   affectedAreas: string[];
-  dateKind: "event" | "deadline";
+  dateKind: "event" | "deadline" | "effective";
   dateText: string | null;
   eventDate: string | null;
   endDate: string | null;
@@ -89,6 +106,9 @@ export type Notice = {
   documentsRequired: string[];
   conditions: Condition[];
   requirements: string[];
+  consequences: string[];
+  lawsCited: string[];
+  keyTerms: KeyTerm[];
   suggestions: string[];
   personalDetails: string[];
   explanation: string;
@@ -142,9 +162,9 @@ export function parseNotice(input: unknown): Notice {
   }
   return {
     ...raw,
-    category:
-      raw.category === "water" || raw.category === "scholarship" ? raw.category : "other",
-    dateKind: raw.dateKind === "deadline" ? "deadline" : "event",
+    category: CATEGORIES.find((c) => c === raw.category) ?? "other",
+    dateKind:
+      raw.dateKind === "deadline" || raw.dateKind === "effective" ? raw.dateKind : "event",
     explanation: raw.explanation,
     eventDate,
     endDate: date(raw.endDate, "End date"),

@@ -17,6 +17,8 @@ import {
   type YesNo,
 } from "@/lib/actions";
 import {
+  FIXTURE_CIRCULAR,
+  FIXTURE_LEGAL,
   FIXTURE_SCHOLARSHIP,
   FIXTURE_WATER,
   FIXTURE_WATER_REVISED,
@@ -92,6 +94,7 @@ const TAGS = {
   external: "External source",
   confirm: "Needs confirmation",
   ai: "AI suggestion, not in the notice",
+  explain: "Explained by AI",
 } as const;
 
 function Tag({ kind }: { kind: keyof typeof TAGS }) {
@@ -275,9 +278,66 @@ function verdict(n: Notice, outcome: Outcome): { title: string; sub: string; ton
       ? { title: "Looks like a match", sub: "Your household meets what is stated", tone: "ok" }
       : { title: "May not match", sub: "A stated condition is not met", tone: "bad" };
   }
+  if (n.category === "circular" || n.category === "legal") {
+    return outcome === "match"
+      ? { title: "This applies to you", sub: "It matches your household details", tone: "warn" }
+      : { title: "May not apply to you", sub: "It doesn't match your details", tone: "ok" };
+  }
   return outcome === "match"
     ? { title: "This affects you", sub: "It matches your household details", tone: "bad" }
     : { title: "May not affect you", sub: "It doesn't match your details", tone: "ok" };
+}
+
+// Circulars and legal papers: the consequences the document states, the laws
+// it names, and its official words explained. Nothing here is advice.
+function FinePrint({ notice, lang }: { notice: Notice; lang: Language }) {
+  const n = notice;
+  if (n.consequences.length + n.lawsCited.length + n.keyTerms.length === 0) return null;
+  return (
+    <Section id="fineprint" title="The fine print, in plain words" icon="info" tint="violet">
+      {n.consequences.length > 0 && (
+        <>
+          <h3>
+            If you do not act, the document says <Tag kind="notice" />
+          </h3>
+          <ul className="plain-list" lang={lang}>
+            {n.consequences.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+          <Proof notice={n} fields={["consequences"]} />
+        </>
+      )}
+      {n.keyTerms.length > 0 && (
+        <>
+          <h3>
+            Official words explained <Tag kind="explain" />
+          </h3>
+          <dl className="terms" lang={lang}>
+            {n.keyTerms.map((k) => (
+              <div key={k.term}>
+                <dt>{k.term}</dt>
+                <dd>{k.meaning}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      )}
+      {n.lawsCited.length > 0 && (
+        <>
+          <h3>
+            Laws and rules it names <Tag kind="notice" />
+          </h3>
+          <ul className="plain-list">
+            {n.lawsCited.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+          <Proof notice={n} fields={["laws"]} />
+        </>
+      )}
+    </Section>
+  );
 }
 
 function Household({
@@ -588,7 +648,8 @@ function Flow({
   const savedIsCurrent = !!saved && saved.date === date && (saved.startTime ?? "") === start;
   const helplines = findRecords(n).filter((r) => r.kind === "helpline");
   const hasVisit = n.documentsRequired.length > 0 || !!n.officeLocation;
-  const dateLabel = n.dateKind === "deadline" ? "Deadline" : "When";
+  const dateLabel =
+    n.dateKind === "deadline" ? "Deadline" : n.dateKind === "effective" ? "In force from" : "When";
   const shownDate = confirmed?.date ?? n.eventDate;
   const whenText = confirmed
     ? formatWhen(confirmed, lang)
@@ -657,6 +718,7 @@ function Flow({
 
   const facts: { label: string; value: string | null; fields: string[] }[] = [
     { label: "Issued by", value: n.issuer, fields: ["issuer"] },
+    { label: "Addressed to", value: n.addressedTo, fields: [] },
     { label: "Areas", value: n.affectedAreas.join(", ") || null, fields: ["affectedAreas"] },
     { label: "Amount", value: n.amount, fields: ["amount"] },
     { label: "Reference", value: n.referenceNumber, fields: [] },
@@ -768,7 +830,19 @@ function Flow({
             </Banner>
           )}
 
+          {n.category === "legal" && (
+            <Banner tone="warn" big>
+              <strong>This is not legal advice.</strong>
+              <br />
+              It explains what the document says, not whether it is correct or what you should do
+              about it. Speak to a lawyer or free legal aid before the deadline. See Helpful
+              contacts.
+            </Banner>
+          )}
+
           <Household notice={n} profile={profile} setProfile={setProfile} />
+
+          <FinePrint notice={n} lang={lang} />
 
           <Section id="todo" title="What to do" icon="list" tint="amber">
             {n.requirements.length > 0 ? (
@@ -985,61 +1059,26 @@ function Flow({
 // Decorative picture of the idea: a notice goes in, three answers come out.
 function HeroArt() {
   return (
-    <div className="art" aria-hidden="true">
-      <div className="paper">
-        <div className="paper-head">
-          <span className="seal" />
-          <div>
-            <b>ಸಾರ್ವಜನಿಕ ಪ್ರಕಟಣೆ</b>
-            <i>PUBLIC NOTICE</i>
-          </div>
-        </div>
-        <span className="ln w90" />
-        <span className="ln w70" />
-        <span className="ln hl w80" />
-        <span className="ln w60" />
-        <span className="ln w85" />
-        <span className="ln hl w55" />
-        <span className="ln w75" />
-        <span className="ln w40" />
-        <div className="beam" />
+    <div className="document-art" aria-hidden="true">
+      <div className="document-back" />
+      <div className="document-sheet">
+        <div className="document-top"><Icon name="list" /><span>PUBLIC NOTICE</span><span>01</span></div>
+        <p className="document-kannada">ಸಾರ್ವಜನಿಕ ಪ್ರಕಟಣೆ</p>
+        <div className="document-rule" />
+        <span className="document-line" /><span className="document-line short" />
+        <span className="document-highlight">What matters. Made clear.</span>
+        <span className="document-line" /><span className="document-line short" />
       </div>
-      <div className="chip c1">
-        <span className="chip-icon blue">
-          <Icon name="calendar" />
-        </span>
-        <div>
-          <b>14 October</b>
-          <span>9 AM to 6 PM</span>
-        </div>
-      </div>
-      <div className="chip c2">
-        <span className="chip-icon red">
-          <Icon name="home" />
-        </span>
-        <div>
-          <b>Your area</b>
-          <span>is on the list</span>
-        </div>
-      </div>
-      <div className="chip c3">
-        <span className="chip-icon green">
-          <Icon name="check" />
-        </span>
-        <div>
-          <b>Reminder set</b>
-          <span>family told</span>
-        </div>
-      </div>
+      <span className="document-stamp"><Icon name="check" size="1em" /> A little clarity</span>
     </div>
   );
 }
 
 const FEATURES: { icon: IconName; tint: Tint; title: string; text: string }[] = [
-  { icon: "search", tint: "amber", title: "Proof for every fact", text: "Tap any date or amount to see the exact words it came from." },
-  { icon: "home", tint: "green", title: "Does it affect my family?", text: "Checks your area and household against what the notice says." },
-  { icon: "refresh", tint: "blue", title: "What changed?", text: "Add a corrected notice and see the difference, with your plan updated." },
-  { icon: "card", tint: "pink", title: "A card for your parents", text: "Large text in Kannada, Hindi or English, ready to share or read aloud." },
+  { icon: "search", tint: "amber", title: "See the source.", text: "Check important details against the words in your notice." },
+  { icon: "home", tint: "green", title: "Make it personal.", text: "Find out what the notice means for your area and household." },
+  { icon: "refresh", tint: "blue", title: "Keep up with changes.", text: "Compare a revised notice before updating your plan." },
+  { icon: "card", tint: "pink", title: "Bring everyone along.", text: "A simple summary to share with family, in their language." },
 ];
 
 export default function Home() {
@@ -1132,14 +1171,20 @@ export default function Home() {
       </a>
       <header className="topbar">
         <div className="topbar-in">
-          <div className="brand">
+          {/* A full page load on purpose: it clears the notice on screen. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a className="brand" href="/" aria-label="Notice to Action home">
             <span className="mark" aria-hidden="true">
               <Icon name="arrow" />
             </span>
             <span>
               Notice<span className="brand-arrow"> → </span>Action
             </span>
-          </div>
+          </a>
+          <nav className="header-nav" aria-label="Main navigation">
+            <a href={thread ? "#result" : "#how-it-works"}>{thread ? "Your notice" : "How it works"}</a>
+            <span className="local-label">Made for everyday India</span>
+          </nav>
           <div className="controls">
             <div role="group" aria-label="Text size" className="sizes">
               {SCALES.map((s) => (
@@ -1187,35 +1232,46 @@ export default function Home() {
               }}
             >
               <div className="hero-text">
-                <p className="pill">
-                  <span className="pill-dot" /> Reads Kannada and English notices
-                </p>
+                <p className="editorial-kicker"><span /> A little clarity. A lot less worry.</p>
                 <h1 id="hero-title">
-                  A photo of the notice. <em>A clear plan</em> for your family.
+                  A notice arrives.<br /><em>Know what’s next.</em>
                 </h1>
                 <p className="hero-sub">
-                  Know what it means for your household, what changed, and what to do next. Every
-                  answer comes with proof.
+                  From water cuts to scholarship forms, turn official words into simple next steps. For you, and the people you look after.
                 </p>
+                <div className="language-note"><span>ಕನ್ನಡ</span><span>हिन्दी</span><span>English</span><i>In a language that feels like home.</i></div>
+                <div className="hero-caption"><span className="caption-line" /><p>One photo. The details that matter.<br />You decide what happens next.</p></div>
+              </div>
+              <div className="upload-studio">
+                <div className="studio-top"><span>START WITH YOUR NOTICE</span><span>01 / 03</span></div>
+                <HeroArt />
+                <h2>Let’s make sense of it.</h2>
+                <p className="upload-description">Drop a photo here, or choose one below.</p>
                 {scanning || (
                   <>
                     <div className="actions cta">
-                      {picker("original", true, "Take a photo", "primary")}
-                      {picker("original", false, "Choose a photo", "ghost")}
+                      {picker("original", false, "Upload a notice", "primary")}
+                      {picker("original", true, "Use camera", "ghost")}
                     </div>
                     <div className="samples">
-                      <span>No notice at hand? Try a sample:</span>
+                      <span>Just looking? Try an example</span>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_WATER)}>
                         Water cut
                       </button>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_SCHOLARSHIP)}>
                         Scholarship
                       </button>
+                      <button className="chip-btn" onClick={() => loadFixture(FIXTURE_CIRCULAR)}>
+                        Govt circular
+                      </button>
+                      <button className="chip-btn" onClick={() => loadFixture(FIXTURE_LEGAL)}>
+                        Legal notice
+                      </button>
                     </div>
                   </>
                 )}
+                <p className="upload-footnote"><Icon name="info" size="1em" /> Images are processed online. Use non-sensitive notices.</p>
               </div>
-              <HeroArt />
             </section>
 
             {error && (
@@ -1224,12 +1280,13 @@ export default function Home() {
               </div>
             )}
 
+            <div id="how-it-works" className="section-intro"><p>FROM INFORMATION TO A LITTLE PEACE OF MIND</p><span>More than a translation.</span></div>
             <section className="features" aria-label="What you get">
-              {FEATURES.map((f) => (
+              {FEATURES.map((f, i) => (
                 <div key={f.title} className={`feature tint-${f.tint}`}>
-                  <span className="badge">
+                  <div className="feature-top"><span className="feature-number">0{i + 1}</span><span className="badge">
                     <Icon name={f.icon} />
-                  </span>
+                  </span></div>
                   <h3>{f.title}</h3>
                   <p>{f.text}</p>
                 </div>
@@ -1393,6 +1450,7 @@ export default function Home() {
       </main>
 
       <footer>
+        <div className="footer-wordmark">A little less confusion.<br /><em>A little more everyday confidence.</em></div>
         <div className="footer-badges">
           <span>Gemma 4 · open-weight model</span>
           <span>Open source · MIT</span>
