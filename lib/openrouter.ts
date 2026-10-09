@@ -160,6 +160,8 @@ export function describeFailure(err: unknown): { error: string; status: number }
   if (err instanceof Error && err.name === "AbortError") {
     return { error: "The model took too long to answer. Try again.", status: 504 };
   }
+  // Anything else is unexpected; keep the detail in the server log only.
+  console.error("Model call failed:", err);
   return {
     error: "Could not reach the model provider. Check the connection and try again.",
     status: 502,

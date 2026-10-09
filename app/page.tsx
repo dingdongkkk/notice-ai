@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   EMPTY_PROFILE,
   buildCard,
@@ -31,17 +24,32 @@ import {
   FIXTURE_WATER_REVISED,
   findRecords,
 } from "@/lib/data";
-import { CARD_LABELS, translator, type T } from "@/lib/i18n";
+import { CARD_LABELS, translator } from "@/lib/i18n";
 import { LANGUAGES, isIsoDate, isTime, type Language, type Notice } from "@/lib/schema";
 import { useStored } from "@/lib/store";
+import {
+  AccountBar,
+  AskBox,
+  MyNotices,
+  Related,
+  SaveCard,
+  useSession,
+  type SavedDocument,
+} from "./account";
 import { Icon, type IconName } from "./icons";
+import { LangContext, useT } from "./lang";
+
+// A marked region of the photo, in percentages of its width and height.
+type Box = { label: string; top: number; left: number; height: number; width: number };
 
 type Result = {
   notice: Notice;
   image: string | null;
-  source: "live" | "fixture";
+  source: "live" | "fixture" | "saved";
   language: Language;
   model?: string;
+  // Undefined while the highlights are still being found.
+  boxes?: Box[];
 };
 type Thread = { id: string; original: Result; revised: Result | null };
 type Slot = "original" | "revised";
@@ -54,14 +62,6 @@ const SCALES = [
   { value: 1.2, label: "A+", name: "Large text" },
   { value: 1.4, label: "A++", name: "Very large text" },
 ];
-
-// The interface language. Text the model wrote stays in the language it was
-// asked for; everything else follows this.
-const LangContext = createContext<Language>("en");
-
-function useT(): T {
-  return translator(useContext(LangContext));
-}
 
 // Downscale in the browser so small Kannada text stays legible but the upload stays small.
 async function toDataUrl(file: File): Promise<string> {
@@ -629,22 +629,88 @@ function Ask({ notice, language }: { notice: Notice; language: Language }) {
   );
 }
 
-function Photo({ image }: { image: string | null }) {
+const BOX_NAMES: Record<string, string> = {
+  date: "Date",
+  time: "Time",
+  areas: "Areas",
+  amount: "Amount",
+  office: "Office",
+  documents: "Documents",
+  action: "What to do",
+  consequence: "If you do not act",
+  reference: "Reference",
+};
+
+// The photo with the important parts marked where the model found them.
+function Marked({ image, boxes, alt, labels }: { image: string; boxes: Box[]; alt: string; labels: boolean }) {
+  const t = useT();
+  return (
+    <span className="photo-frame">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={image} alt={alt} />
+      {boxes.map((b, i) => (
+        <span
+          key={i}
+          className={`mark-box mark-${b.label}`}
+          style={{ top: `${b.top}%`, left: `${b.left}%`, height: `${b.height}%`, width: `${b.width}%` }}
+        >
+          {labels && <b>{t(BOX_NAMES[b.label] ?? b.label)}</b>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Photo({ result }: { result: Result }) {
   const t = useT();
   const dialog = useRef<HTMLDialogElement>(null);
-  if (!image) return <p className="muted">{t("This is a synthetic sample, so there is no photo.")}</p>;
+  const [show, setShow] = useState(true);
+  const image = result.image;
+  if (!image) {
+    return (
+      <p className="muted">
+        {t(
+          result.source === "saved"
+            ? "Photos are not stored, so a saved notice has no photo."
+            : "This is a synthetic sample, so there is no photo.",
+        )}
+      </p>
+    );
+  }
+  const boxes = show ? (result.boxes ?? []) : [];
+  const found = result.boxes ?? [];
   return (
     <>
       <button className="photo" onClick={() => dialog.current?.showModal()}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt={t("The notice you uploaded")} />
+        <Marked image={image} boxes={boxes} alt={t("The notice you uploaded")} labels={false} />
         <span>
           <Icon name="zoom" /> {t("Tap to enlarge")}
         </span>
       </button>
+      {result.boxes === undefined && result.source === "live" && (
+        <p className="muted" role="status">
+          {t("Finding the important parts on the photo…")}
+        </p>
+      )}
+      {found.length > 0 && (
+        <>
+          <ul className="legend">
+            {[...new Set(found.map((b) => b.label))].map((label) => (
+              <li key={label} className={`mark-${label}`}>
+                {t(BOX_NAMES[label] ?? label)}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            {t("Important parts are marked on the photo by the AI. Positions are approximate.")}
+          </p>
+          <button className="ghost small" onClick={() => setShow(!show)}>
+            {t(show ? "Hide highlights" : "Show highlights")}
+          </button>
+        </>
+      )}
       <dialog ref={dialog} className="zoom" aria-label={t("Enlarged notice photo")}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt="The notice you uploaded, enlarged" />
+        <Marked image={image} boxes={boxes} alt={t("The notice you uploaded")} labels />
         <form method="dialog">
           <button>
             <Icon name="close" /> {t("Close")}
@@ -1052,7 +1118,7 @@ function Flow({
           <Section id="proof" title={t("Proof")} icon="search" tint="amber">
             <p className="muted">{t("The facts as read, and your photo to check them against.")}</p>
             <div id="photo" tabIndex={-1}>
-              <Photo image={result.image} />
+              <Photo result={result} />
             </div>
             <ul className="facts">
               {facts
@@ -1138,6 +1204,25 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const busy = pending !== null;
   const t = translator(language);
+  const { user, refresh } = useSession();
+  // Bumped whenever the saved notices change, so the lists reload.
+  const [saves, setSaves] = useState(0);
+
+  // Adds the highlight boxes to whichever result shows this photo.
+  function attachBoxes(image: string, boxes: Box[]) {
+    const mark = (r: Result | null) => (r && r.image === image ? { ...r, boxes } : r);
+    setThread((th) => th && { ...th, original: mark(th.original)!, revised: mark(th.revised) });
+  }
+
+  function openSaved(d: SavedDocument) {
+    setError("");
+    setThread({
+      id: `saved-${d.id}`,
+      original: { notice: d.notice, image: null, source: "saved", language: d.language },
+      revised: null,
+    });
+    showResult("result");
+  }
 
   async function onFile(file: File | undefined, slot: Slot) {
     if (!file || busy) return;
@@ -1154,6 +1239,15 @@ export default function Home() {
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
       showResult("result");
+      // Highlights arrive a few seconds later and do not hold up the answer.
+      fetch("/api/highlight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image }),
+      })
+        .then((res) => res.json())
+        .then((body) => attachBoxes(image, Array.isArray(body?.boxes) ? body.boxes : []))
+        .catch(() => attachBoxes(image, []));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -1234,6 +1328,7 @@ export default function Home() {
             <span className="local-label">{t("Made for everyday India")}</span>
           </nav>
           <div className="controls">
+            <AccountBar user={user} onChange={refresh} />
             <div role="group" aria-label={t("Text size")} className="sizes">
               {SCALES.map((s) => (
                 <button
@@ -1428,6 +1523,23 @@ export default function Home() {
               setReminders={setReminders}
             />
 
+            <SaveCard
+
+              key={`save-${thread.id}-${thread.revised ? "r" : "o"}`}
+
+              notice={current.notice}
+
+              language={current.language}
+
+              user={user}
+
+              onSaved={() => setSaves((n) => n + 1)}
+
+            />
+
+            <Related notice={current.notice} user={user} version={saves} onOpen={openSaved} />
+
+
             <section className="card revise" aria-labelledby="revise">
               <h2 id="revise" className="section-title">
                 <span className="badge">
@@ -1463,6 +1575,21 @@ export default function Home() {
             </section>
           </>
         )}
+
+        {user && (
+
+          <>
+
+            <MyNotices version={saves} onOpen={openSaved} onChange={() => setSaves((n) => n + 1)} />
+
+            <AskBox mine language={language} />
+
+          </>
+
+        )}
+
+        {!thread && <AskBox mine={false} language={language} />}
+
 
         {reminders.length > 0 && (
           <Section id="saved" title={t("My saved reminders")} icon="calendar" tint="green">

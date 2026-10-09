@@ -14,6 +14,27 @@ Photograph an official document in Kannada or English and the app turns it into 
 8. **Answers follow-up questions** from the facts already read from the notice.
 9. **Explains the fine print.** For circulars and legal papers it lists what the document says will happen if you do not act, the laws and rules it names, and its official words in everyday language.
 
+10. **Marks the important parts on the photo.** A second request asks Gemma 4 where the date, time, areas, amount, office, documents, required action and consequences are written, and draws coloured boxes over the photo with a legend. Positions are the model's and are approximate.
+11. **Remembers your notices.** With an account you can save the facts read from a notice, reopen them later, see earlier notices related to the one on screen, and ask a question across everything you have saved ("Which of my notices have a deadline this month?"). The answer cites the notices it used.
+12. **Explains a kind of notice without an upload.** Anyone, signed in or not, can ask what a type of notice means. The answer comes from a shared library of general summaries.
+
+### Accounts and saved notices
+
+- Sign up with a username and a password of at least 8 characters. Passwords are stored as salted scrypt hashes. A session is a random token in an HttpOnly cookie; only its hash is stored. Five wrong passwords lock that username for a minute.
+- Saving is a button, never automatic. Only the facts read from the notice are stored. The photo is never stored, so a reopened notice has no photo or highlights.
+- Each account sees only its own notices; the server checks the owner on every read and delete.
+
+### How search works
+
+Saved notices and library summaries are each turned into a vector with Google's `gemini-embedding-001` and ranked against the question by cosine similarity; the top four are given to Gemma 4, which answers from them only and cites them by number. Without a Google key, ranking falls back to counting shared words. The embedding model is the one closed-weight component in the app; Gemma 4 does all the reading and answering.
+
+### The shared library
+
+- Adding to it is an unticked checkbox on the save card, offered only for water-cut notices, scholarship notices and government circulars. Legal papers and unclassified documents can never be shared.
+- A shared entry holds the type, issuer, title, headline, explanation, required actions, stated consequences, explained terms and laws named. It leaves out dates, times, areas, amounts, reference numbers, the addressee and the photo. Anything the model listed as personal is replaced, and runs of six or more digits are removed.
+- The filter relies on the model's list of personal details plus the digit rule. It can miss a name the model did not flag, which is why sharing is opt-in.
+- The library starts with three of the app's own synthetic samples so that it is not empty. One entry is kept per issuer and title.
+
 ### Legal documents
 
 The app explains what a legal document says. It does not say whether a claim is valid, what you should do about it, or what a court will decide, and the model is instructed not to. A "This is not legal advice" notice is shown on every legal document, with the NALSA free legal aid helpline (15100). A deadline counted from another event, such as "within 15 days of receipt", is left unresolved for you to work out and enter.
@@ -42,18 +63,20 @@ One request per photo extracts the facts and writes the explanation. The browser
 
 ### What has been tested live
 
-Two synthetic water-cut notices in `samples/` (one English, one Kannada) were read through the running app, each taking about 20 seconds. Both gave the right date, time and areas. On the Kannada one the model misread a vowel in one place name ("ಮತ್ತಿಕೇರೆ" for "ಮತ್ತಿಕೆರೆ"), which is why area matching allows small spelling differences. A synthetic English scholarship notice was also read through the page itself in about 20 seconds, with the right deadline, office and conditions. No real photographed notice, circular or legal paper has been read live yet. The larger `gemma-4-31b-it` model took 30 seconds to two minutes in the same tests and sometimes returned "high demand" errors.
+Two synthetic water-cut notices in `samples/` (one English, one Kannada) were read through the running app, each taking about 20 seconds. Both gave the right date, time and areas. On the Kannada one the model misread a vowel in one place name ("ಮತ್ತಿಕೇರೆ" for "ಮತ್ತಿಕೆರೆ"), which is why area matching allows small spelling differences. A synthetic English scholarship notice was also read through the page itself in about 20 seconds, with the right deadline, office and conditions. No real photographed notice, circular or legal paper has been read live yet. A synthetic government circular was read the same way while signed in, then saved, shared, found again and questioned across saved notices, with the highlights landing on the right lines. The larger `gemma-4-31b-it` model took 30 seconds to two minutes in the same tests and sometimes returned "high demand" errors.
 
 ## Where your data goes
 
-- The photo, and the facts read from it when you ask a follow-up question, are sent to the model host (Google AI Studio or OpenRouter). The app says so before upload. Nothing is processed on the device.
+- The photo, and the facts read from it when you ask a follow-up question, are sent to the model host (Google AI Studio or OpenRouter). The photo is sent twice: once to be read and once to find the highlights.
+- If you sign in and press Save, the facts read from the notice are stored in a SQLite file on the server (`data/app.db`, Git-ignored) under your account, and their text is sent to Google's embedding service. Questions you ask across your notices are sent there too.
+- If you tick the sharing box, the filtered summary described under "The shared library" becomes readable by anyone who asks the library a question. The app says so before upload. Nothing is processed on the device.
 - The household profile, text size, language and saved reminders are kept in the browser's local storage and are not sent to the server or the model.
-- The server keeps a result in memory to avoid repeating a request for the same image; it writes nothing to disk.
+- Without an account nothing is written to disk; the server only keeps a result in memory to avoid repeating a request for the same image.
 - Sharing happens only when you press Share or Copy.
 
 ## Run it
 
-Requires Node.js 20 or newer and a Google AI Studio or OpenRouter API key.
+Requires Node.js 22.13 or newer (for the built-in SQLite module) and a Google AI Studio or OpenRouter API key.
 
 ```bash
 npm install
@@ -81,6 +104,13 @@ GEMINI_API_KEY=your_key_here
 | `lib/prompt.ts` | Prompts; text inside the notice is treated as data, not instructions |
 | `lib/actions.ts` | Household check, calendar file, saved reminders, family card, revision comparison |
 | `lib/data.ts` | Hand-maintained public records and the synthetic samples |
+| `app/api/auth/route.ts` | Sign up, sign in, sign out, who am I |
+| `app/api/documents/` | Save, list and delete your notices; find related ones; answer a question across them |
+| `app/api/library/route.ts` | Library size, and answers to general questions from it |
+| `app/api/highlight/route.ts` | Asks the model where the important parts are on the photo |
+| `lib/db.ts`, `lib/auth.ts` | The SQLite database (built into Node) and accounts |
+| `lib/retrieve.ts` | Embeddings, ranking, saved notices and the shared library |
+| `app/account.tsx`, `app/login/page.tsx` | Sign-in page and the saved-notice, related-notice and question components |
 | `lib/i18n.ts` | Interface text and family card labels in English, Kannada and Hindi |
 | `lib/store.ts` | Browser local storage hook |
 | `app/page.tsx` | The single page |
@@ -101,6 +131,10 @@ Key dependencies: Next.js, React, Zod.
 - Read-aloud uses the device's own voices; many devices have no Kannada voice.
 - The model host is rate limited and can be busy; the app shows a message and does not retry by itself.
 - Live testing so far is two synthetic water-cut notices; see "What has been tested live". This is not an official government service and gives no legal advice.
+
+- Accounts are basic: there is no email, password reset or account deletion screen, and the sign-in lockout is held in memory. The database is one local file, so this build suits a single server and would lose its data on a host with no persistent disk.
+- Highlights were checked on three computer-drawn notices, where the boxes sat on the right lines. They have not been checked on a real photograph.
+- A question across saved notices always passes the four best matches to the model, even weak ones, and lists all four as consulted.
 
 ## License
 

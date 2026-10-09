@@ -2076,3 +2076,196 @@ dl.terms dd {
   margin: 0.15em 0 0;
   color: var(--muted);
 }
+
+/* ---- Accounts, saved notices, library ------------------------------------ */
+
+.account,
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.account-link,
+.button-link {
+  min-height: 48px;
+  padding: 0 1em;
+  border-radius: 14px;
+  border: 2px solid var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-weight: 700;
+}
+
+.account-name {
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+main.login {
+  max-width: 26em;
+  padding-top: 8vh;
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+main.login form {
+  width: 100%;
+  margin-top: 0;
+}
+
+main.login h1 {
+  font-size: 1.6em;
+}
+
+main.login .brand {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+input[type="password"] {
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--card);
+  border: 2px solid var(--muted);
+  border-radius: 14px;
+  padding: 0.5em 0.8em;
+  min-height: 56px;
+  width: 100%;
+}
+
+.form-error {
+  color: var(--bad-ink);
+  background: var(--bad-bg);
+  border-radius: 12px;
+  padding: 0.6em 0.8em;
+  font-weight: 700;
+}
+
+ul.doc-list {
+  list-style: none;
+  padding: 0;
+}
+
+ul.doc-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 0.7em 0;
+  border-bottom: 1px solid var(--line);
+}
+
+ul.doc-list li:last-child {
+  border-bottom: 0;
+}
+
+ul.doc-list li > div {
+  flex: 1 1 12em;
+  display: flex;
+  flex-direction: column;
+}
+
+ol.sources {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+
+/* ---- Highlights on the photo --------------------------------------------- */
+
+.photo-frame {
+  position: relative;
+  display: block;
+}
+
+.photo-frame img {
+  display: block;
+  width: 100%;
+}
+
+.mark-box {
+  --mark: #f2b705;
+  position: absolute;
+  border: 2px solid var(--mark);
+  background: color-mix(in srgb, var(--mark) 28%, transparent);
+  border-radius: 4px;
+  padding: 0;
+}
+
+.mark-box b {
+  position: absolute;
+  left: -2px;
+  bottom: 100%;
+  background: var(--mark);
+  color: #10151f;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 0 6px;
+  border-radius: 4px 4px 0 0;
+  white-space: nowrap;
+}
+
+.mark-date,
+.mark-time {
+  --mark: #e03131;
+}
+
+.mark-areas,
+.mark-office {
+  --mark: #2f6fed;
+}
+
+.mark-amount,
+.mark-documents {
+  --mark: #12864c;
+}
+
+.mark-action {
+  --mark: #f2b705;
+}
+
+.mark-consequence {
+  --mark: #b3184f;
+}
+
+.mark-reference {
+  --mark: #7a3cf0;
+}
+
+ul.legend {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0 0 0.5em;
+}
+
+ul.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+ul.legend li::before {
+  content: "";
+  width: 0.9em;
+  height: 0.9em;
+  border-radius: 3px;
+  background: var(--mark, #f2b705);
+}
+
+dialog.zoom .photo-frame {
+  min-width: min(1000px, 92vw);
+}
