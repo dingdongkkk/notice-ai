@@ -332,6 +332,10 @@ const UI: Record<string, [string, string]> = {
   "Hide highlights": ["ಗುರುತುಗಳನ್ನು ಮರೆಮಾಡಿ", "निशान छिपाएँ"],
   "Show highlights": ["ಗುರುತುಗಳನ್ನು ತೋರಿಸಿ", "निशान दिखाएँ"],
   "Photos are not stored, so a saved notice has no photo.": ["ಫೋಟೋಗಳನ್ನು ಉಳಿಸುವುದಿಲ್ಲ, ಆದ್ದರಿಂದ ಉಳಿಸಿದ ಸೂಚನೆಗೆ ಫೋಟೋ ಇಲ್ಲ.", "फ़ोटो नहीं रखी जातीं, इसलिए सहेजी हुई सूचना की फ़ोटो नहीं है."],
+  "Continue with Google": ["Google ಮೂಲಕ ಮುಂದುವರಿಯಿರಿ", "Google से जारी रखें"],
+  "or": ["ಅಥವಾ", "या"],
+  "Google sign-in did not complete. Please try again.": ["Google ಸೈನ್ ಇನ್ ಪೂರ್ಣವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.", "Google साइन इन पूरा नहीं हुआ. कृपया फिर कोशिश करें."],
+  "Google sign-in is not set up on this server.": ["ಈ ಸರ್ವರ್‌ನಲ್ಲಿ Google ಸೈನ್ ಇನ್ ಸಿದ್ಧಪಡಿಸಿಲ್ಲ.", "इस सर्वर पर Google साइन इन सेट नहीं है."],
 };
 
 export type T = (text: string, vars?: Record<string, string | number>) => string;

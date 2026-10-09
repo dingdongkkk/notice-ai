@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { translator } from "@/lib/i18n";
 import type { Language } from "@/lib/schema";
 import { useStored } from "@/lib/store";
@@ -14,6 +14,20 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [google, setGoogle] = useState(false);
+
+  // Whether Google sign-in is configured, and whether a Google attempt just failed.
+  useEffect(() => {
+    fetch("/api/auth")
+      .then((res) => res.json())
+      .then((body) => {
+        setGoogle(body?.google === true);
+        const reason = new URLSearchParams(window.location.search).get("error");
+        if (reason === "google") setError("Google sign-in did not complete. Please try again.");
+        if (reason === "google-setup") setError("Google sign-in is not set up on this server.");
+      })
+      .catch(() => {});
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,6 +66,22 @@ export default function Login() {
         <form className="card" onSubmit={submit}>
           <h1>{t(signup ? "Create your account" : "Sign in to your account")}</h1>
           <p className="muted">{t("Your saved notices and questions stay private to your account.")}</p>
+          {google && (
+            <>
+              <a className="google-button" href="/api/auth/google">
+                <svg viewBox="0 0 48 48" width="22" height="22" aria-hidden="true">
+                  <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z" />
+                  <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 7l7.2 5.6c4.2-3.9 7.1-9.700 7.1-17.1z" />
+                  <path fill="#FBBC05" d="M10.5 28.6c-.5-1.400-.8-3-.8-4.600s.3-3.200.8-4.600l-7.900-6.200C1 16.500 0 20.100 0 24s1 7.500 2.600 10.800l7.900-6.200z" />
+                  <path fill="#34A853" d="M24 48c6.300 0 11.800-2.100 15.700-5.700l-7.200-5.600c-2.100 1.400-4.900 2.300-8.500 2.300-6.300 0-11.600-4.100-13.500-9.900l-7.900 6.200C6.500 42.600 14.600 48 24 48z" />
+                </svg>
+                {t("Continue with Google")}
+              </a>
+              <p className="divider-or">
+                <span>{t("or")}</span>
+              </p>
+            </>
+          )}
           <label className="field">
             {t("Username")}
             <input

@@ -21,6 +21,7 @@ Photograph an official document in Kannada or English and the app turns it into 
 ### Accounts and saved notices
 
 - Sign up with a username and a password of at least 8 characters. Passwords are stored as salted scrypt hashes. A session is a random token in an HttpOnly cookie; only its hash is stored. Five wrong passwords lock that username for a minute.
+- Or sign in with Google, if the server has a Google OAuth client configured (see below). The app asks Google only for your email address, stores it as your account name together with Google's ID for you, and keeps no Google tokens.
 - Saving is a button, never automatic. Only the facts read from the notice are stored. The photo is never stored, so a reopened notice has no photo or highlights.
 - Each account sees only its own notices; the server checks the owner on every read and delete.
 
@@ -90,6 +91,21 @@ Put your key in `.env.local` (Git-ignored), then open http://localhost:3000.
 GEMINI_API_KEY=your_key_here
 ```
 
+### Google sign-in (optional)
+
+The "Continue with Google" button appears only when both variables below are set.
+
+1. In Google Cloud Console, open APIs & Services → Credentials and create an OAuth client ID of type "Web application".
+2. Add the authorised redirect URI `http://localhost:3000/api/auth/google/callback` (and the same path on your real address when you deploy).
+3. Put the client ID and secret in `.env.local` and restart:
+
+```dotenv
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+While the OAuth consent screen is in "Testing" mode, only the test users you list in the console can sign in.
+
 "Try an example" loads a hand-written water-cut notice (with a corrected version), scholarship notice, government circular or legal notice. Samples are labelled on screen and never pass through the model.
 
 ## How it works
@@ -132,6 +148,7 @@ Key dependencies: Next.js, React, Zod.
 - The model host is rate limited and can be busy; the app shows a message and does not retry by itself.
 - Live testing so far is two synthetic water-cut notices; see "What has been tested live". This is not an official government service and gives no legal advice.
 
+- Google sign-in has not been run against Google: no OAuth client was available when it was written. Only its start redirect and its rejection of a bad return were tested.
 - Accounts are basic: there is no email, password reset or account deletion screen, and the sign-in lockout is held in memory. The database is one local file, so this build suits a single server and would lose its data on a host with no persistent disk.
 - Highlights were checked on three computer-drawn notices, where the boxes sat on the right lines. They have not been checked on a real photograph.
 - A question across saved notices always passes the four best matches to the model, even weak ones, and lists all four as consulted.

@@ -3,6 +3,7 @@ import {
   createUser,
   currentUser,
   endSession,
+  googleConfig,
   sessionCookie,
   signIn,
   startSession,
@@ -14,7 +15,7 @@ function fail(error: string, status: number) {
 }
 
 export async function GET(req: Request) {
-  return NextResponse.json({ user: currentUser(req) });
+  return NextResponse.json({ user: currentUser(req), google: googleConfig(req) !== null });
 }
 
 export async function POST(req: Request) {

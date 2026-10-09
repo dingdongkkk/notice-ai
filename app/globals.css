@@ -2269,3 +2269,41 @@ ul.legend li::before {
 dialog.zoom .photo-frame {
   min-width: min(1000px, 92vw);
 }
+
+/* ---- Google sign-in -------------------------------------------------------- */
+
+.google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7em;
+  min-height: 56px;
+  margin-top: 0.8em;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: #ffffff;
+  color: #1f1f1f;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.google-button:hover {
+  border-color: var(--brand);
+}
+
+.divider-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.85em;
+  margin: 1em 0 0;
+}
+
+.divider-or::before,
+.divider-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}

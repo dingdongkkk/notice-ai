@@ -38,6 +38,41 @@ export function createUser(username: string, password: string): User | null {
   }
 }
 
+// Finds the account for a Google identity, or creates one. The account is
+// named by the Google email and has no usable password.
+export function userForGoogle(sub: string, email: string): User {
+  const db = database();
+  const found = db.prepare("SELECT id, username FROM users WHERE google_sub = ?").get(sub) as
+    | User
+    | undefined;
+  if (found) return { id: found.id, username: found.username };
+  // A password account may already use this name; add a suffix if so.
+  let name = email.toLowerCase();
+  for (let i = 2; db.prepare("SELECT 1 FROM users WHERE username = ?").get(name); i++) {
+    name = `${email.toLowerCase()} (${i})`;
+  }
+  const result = db
+    .prepare(
+      "INSERT INTO users (username, salt, hash, created, google_sub) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(
+      name,
+      randomBytes(16).toString("hex"),
+      randomBytes(64).toString("hex"),
+      new Date().toISOString(),
+      sub,
+    );
+  return { id: Number(result.lastInsertRowid), username: name };
+}
+
+export function googleConfig(req: Request) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  const origin = process.env.APP_URL?.replace(/\/$/, "") || new URL(req.url).origin;
+  return { clientId, clientSecret, redirectUri: `${origin}/api/auth/google/callback` };
+}
+
 export type SignIn = { user: User } | { error: string; status: number };
 
 export function signIn(username: string, password: string): SignIn {

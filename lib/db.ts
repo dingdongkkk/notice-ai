@@ -46,5 +46,11 @@ export function database(): DatabaseSync {
       embedding TEXT
     );
   `);
+  // Added after the first version: the Google account a user signs in with.
+  const columns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "google_sub")) {
+    db.exec("ALTER TABLE users ADD COLUMN google_sub TEXT");
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL");
   return db;
 }
