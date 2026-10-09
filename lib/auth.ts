@@ -6,7 +6,8 @@ const WEEK_SECONDS = 7 * 24 * 60 * 60;
 const MAX_FAILURES = 5;
 const LOCK_MS = 60_000;
 
-export type User = { id: number; username: string };
+// `name` is the display name from Google; accounts made with a password have none.
+export type User = { id: number; username: string; name?: string | null };
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const derive = (password: string, salt: string) => scryptSync(password, salt, 64).toString("hex");
@@ -40,12 +41,17 @@ export function createUser(username: string, password: string): User | null {
 
 // Finds the account for a Google identity, or creates one. The account is
 // named by the Google email and has no usable password.
-export function userForGoogle(sub: string, email: string): User {
+export function userForGoogle(sub: string, email: string, displayName: string | null): User {
   const db = database();
+  const shown = displayName?.trim().slice(0, 80) || null;
   const found = db.prepare("SELECT id, username FROM users WHERE google_sub = ?").get(sub) as
     | User
     | undefined;
-  if (found) return { id: found.id, username: found.username };
+  if (found) {
+    // Keep the name current; people change it in their Google account.
+    db.prepare("UPDATE users SET name = ? WHERE id = ?").run(shown, found.id);
+    return { id: found.id, username: found.username, name: shown };
+  }
   // A password account may already use this name; add a suffix if so.
   let name = email.toLowerCase();
   for (let i = 2; db.prepare("SELECT 1 FROM users WHERE username = ?").get(name); i++) {
@@ -53,7 +59,7 @@ export function userForGoogle(sub: string, email: string): User {
   }
   const result = db
     .prepare(
-      "INSERT INTO users (username, salt, hash, created, google_sub) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO users (username, salt, hash, created, google_sub, name) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .run(
       name,
@@ -61,8 +67,9 @@ export function userForGoogle(sub: string, email: string): User {
       randomBytes(64).toString("hex"),
       new Date().toISOString(),
       sub,
+      shown,
     );
-  return { id: Number(result.lastInsertRowid), username: name };
+  return { id: Number(result.lastInsertRowid), username: name, name: shown };
 }
 
 export function googleConfig(req: Request) {
@@ -120,10 +127,10 @@ export function currentUser(req: Request): User | null {
   if (!token) return null;
   const row = database()
     .prepare(
-      "SELECT users.id, users.username FROM sessions JOIN users ON users.id = sessions.user_id WHERE token_hash = ? AND expires > ?",
+      "SELECT users.id, users.username, users.name FROM sessions JOIN users ON users.id = sessions.user_id WHERE token_hash = ? AND expires > ?",
     )
     .get(sha(token), Date.now()) as User | undefined;
-  return row ? { id: row.id, username: row.username } : null;
+  return row ? { id: row.id, username: row.username, name: row.name ?? null } : null;
 }
 
 export function endSession(req: Request) {

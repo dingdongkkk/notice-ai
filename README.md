@@ -22,7 +22,7 @@ Photograph an official document in Kannada or English and the app turns it into 
 ### Accounts and saved notices
 
 - Sign up with a username and a password of at least 8 characters. Passwords are stored as salted scrypt hashes. A session is a random token in an HttpOnly cookie; only its hash is stored. Five wrong passwords lock that username for a minute.
-- Or sign in with Google, if the server has a Google OAuth client configured (see below). The app asks Google only for your email address, stores it as your account name together with Google's ID for you, and keeps no Google tokens.
+- Or sign in with Google, if the server has a Google OAuth client configured (see below). The app asks Google for your name and email address, shows the name in the top bar, stores both with Google's ID for you, and keeps no Google tokens.
 - Saving is a button, never automatic. Only the facts read from the notice are stored. The photo is never stored, so a reopened notice has no photo or highlights.
 - Each account sees only its own notices; the server checks the owner on every read and delete.
 

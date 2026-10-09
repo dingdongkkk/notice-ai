@@ -51,6 +51,8 @@ export function database(): DatabaseSync {
   if (!columns.some((c) => c.name === "google_sub")) {
     db.exec("ALTER TABLE users ADD COLUMN google_sub TEXT");
   }
+  // The name Google gives for the person, shown instead of their email.
+  if (!columns.some((c) => c.name === "name")) db.exec("ALTER TABLE users ADD COLUMN name TEXT");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_google ON users(google_sub) WHERE google_sub IS NOT NULL");
   return db;
 }

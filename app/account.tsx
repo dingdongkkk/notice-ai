@@ -5,7 +5,7 @@ import type { Language, Notice } from "@/lib/schema";
 import { Icon } from "./icons";
 import { useT } from "./lang";
 
-export type User = { id: number; username: string };
+export type User = { id: number; username: string; name?: string | null };
 export type SavedDocument = { id: number; created: string; language: Language; notice: Notice };
 
 const SHAREABLE = ["water", "scholarship", "circular"];
@@ -50,8 +50,11 @@ export function AccountBar({ user, onChange }: { user: User | null | undefined; 
   }
   return (
     <div className="account">
+      <span className="account-avatar" aria-hidden="true">
+        {(user.name || user.username).trim().charAt(0).toUpperCase()}
+      </span>
       <span className="account-name" title={t("Signed in as {name}", { name: user.username })}>
-        {user.username}
+        {user.name || user.username}
       </span>
       <button
         className="ghost small"

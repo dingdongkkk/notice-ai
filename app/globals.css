@@ -2102,8 +2102,20 @@ dl.terms dd {
   font-weight: 700;
 }
 
+.account-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.2em;
+  height: 2.2em;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-weight: 700;
+}
+
 .account-name {
-  max-width: 9em;
+  max-width: 11em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -116,7 +116,8 @@ export async function GET(req: Request) {
       return failed();
     }
 
-    const user = userForGoogle(claims.sub, claims.email);
+    const name = typeof claims.name === "string" ? claims.name : null;
+    const user = userForGoogle(claims.sub, claims.email, name);
     const res = NextResponse.redirect(new URL("/", req.url));
     res.headers.append("Set-Cookie", sessionCookie(startSession(user)));
     res.headers.append("Set-Cookie", "nta_oauth=; Path=/api/auth/google; HttpOnly; Max-Age=0");
