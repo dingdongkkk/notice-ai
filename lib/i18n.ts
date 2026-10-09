@@ -342,6 +342,7 @@ const UI: Record<string, [string, string]> = {
   "Updated in your Google Calendar.": ["ನಿಮ್ಮ Google Calendar ನಲ್ಲಿ ಬದಲಿಸಲಾಗಿದೆ.", "आपके Google Calendar में बदल दिया गया."],
   "Google Calendar could not be reached. Use the calendar file instead.": ["Google Calendar ತಲುಪಲು ಆಗಲಿಲ್ಲ. ಬದಲಿಗೆ ಕ್ಯಾಲೆಂಡರ್ ಫೈಲ್ ಬಳಸಿ.", "Google Calendar तक नहीं पहुँच सके. इसकी जगह कैलेंडर फ़ाइल इस्तेमाल करें."],
   "Allow pop-ups for this site, then try again.": ["ಈ ಸೈಟ್‌ಗೆ ಪಾಪ್-ಅಪ್‌ಗಳನ್ನು ಅನುಮತಿಸಿ, ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.", "इस साइट के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें."],
+  "Or open it in Google Calendar and save it yourself": ["ಅಥವಾ Google Calendar ನಲ್ಲಿ ತೆರೆದು ನೀವೇ ಉಳಿಸಿ", "या इसे Google Calendar में खोलकर ख़ुद सहेजें"],
 };
 
 export type T = (text: string, vars?: Record<string, string | number>) => string;

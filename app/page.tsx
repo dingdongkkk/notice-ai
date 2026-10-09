@@ -8,6 +8,7 @@ import {
   checkRelevance,
   compareNotices,
   eventTitle,
+  googleCalendarLink,
   formatWhen,
   planUpdates,
   saveReminder,
@@ -1147,6 +1148,13 @@ function Flow({
                 <Icon name="calendar" />
                 {t(events[thread.id] ? "Update in Google Calendar" : "Add to Google Calendar")}
               </button>
+            )}
+            {confirmed && (
+              <p>
+                <a href={googleCalendarLink(n, confirmed)} target="_blank" rel="noreferrer">
+                  {t("Or open it in Google Calendar and save it yourself")}
+                </a>
+              </p>
             )}
             <p className="muted">{t("The reminder rings 12 hours before.")}</p>
           </Section>

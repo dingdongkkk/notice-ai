@@ -103,6 +103,29 @@ export function buildIcs(n: Notice, e: ConfirmedEvent, uid: string, sequence: nu
     .join("\r\n");
 }
 
+// A link that opens Google Calendar with the event already filled in, for the
+// person to save themselves. It needs no permission from Google. Only the
+// title, time and place go into the link; the explanation is left out.
+export function googleCalendarLink(n: Notice, e: ConfirmedEvent): string {
+  const day = compact(e.date);
+  const clock = (t: string) => `${t.replace(":", "")}00`;
+  const timed = isTime(e.startTime);
+  const end = timed && isTime(e.endTime) && e.endTime > e.startTime! ? e.endTime : e.startTime;
+  const dates = timed
+    ? `${day}T${clock(e.startTime!)}/${day}T${clock(end!)}`
+    : `${day}/${compact(nextDay(e.date))}`;
+  const url = new URL("https://calendar.google.com/calendar/render");
+  url.search = new URLSearchParams({
+    action: "TEMPLATE",
+    text: eventTitle(n),
+    dates,
+    ctz: "Asia/Kolkata",
+    details: "Created from a photo of a notice by Notice → Action. Check the original notice.",
+    location: n.officeLocation || n.affectedAreas.join(", "),
+  }).toString();
+  return url.toString();
+}
+
 // ---- Saved reminders -------------------------------------------------------
 
 export type SavedReminder = ConfirmedEvent & {
