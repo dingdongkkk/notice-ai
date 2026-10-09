@@ -16,18 +16,45 @@ const list = z
     (v ?? []).map((s) => (s == null ? "" : String(s).trim())).filter(Boolean),
   );
 
+export type Requires = "student" | "senior_citizen" | "other";
+export type Condition = { text: string; requires: Requires };
+
+const conditions = z
+  .array(z.union([z.string(), z.object({ text, requires: text })]).nullish())
+  .nullish()
+  .transform((v) =>
+    (v ?? []).flatMap((c): Condition[] => {
+      if (!c) return [];
+      if (typeof c === "string") return c.trim() ? [{ text: c.trim(), requires: "other" }] : [];
+      if (!c.text) return [];
+      const requires =
+        c.requires === "student" || c.requires === "senior_citizen" ? c.requires : "other";
+      return [{ text: c.text, requires }];
+    }),
+  );
+
 const RawNotice = z.object({
+  category: text,
   documentType: text,
   issuer: text,
   title: text,
+  headline: text,
+  referenceNumber: text,
   originalLanguage: text,
   affectedAreas: list,
+  dateKind: text,
   dateText: text,
   eventDate: text,
   endDate: text,
   startTime: text,
   endTime: text,
+  amount: text,
+  officeLocation: text,
+  documentsRequired: list,
+  conditions,
   requirements: list,
+  suggestions: list,
+  personalDetails: list,
   explanation: text,
   evidence: z
     .array(z.object({ field: text, quote: text }))
@@ -40,18 +67,30 @@ const RawNotice = z.object({
   unresolved: list,
 });
 
+export type Category = "water" | "scholarship" | "other";
+
 export type Notice = {
+  category: Category;
   documentType: string | null;
   issuer: string | null;
   title: string | null;
+  headline: string | null;
+  referenceNumber: string | null;
   originalLanguage: string | null;
   affectedAreas: string[];
+  dateKind: "event" | "deadline";
   dateText: string | null;
   eventDate: string | null;
   endDate: string | null;
   startTime: string | null;
   endTime: string | null;
+  amount: string | null;
+  officeLocation: string | null;
+  documentsRequired: string[];
+  conditions: Condition[];
   requirements: string[];
+  suggestions: string[];
+  personalDetails: string[];
   explanation: string;
   evidence: { field: string; quote: string }[];
   unresolved: string[];
@@ -103,6 +142,9 @@ export function parseNotice(input: unknown): Notice {
   }
   return {
     ...raw,
+    category:
+      raw.category === "water" || raw.category === "scholarship" ? raw.category : "other",
+    dateKind: raw.dateKind === "deadline" ? "deadline" : "event",
     explanation: raw.explanation,
     eventDate,
     endDate: date(raw.endDate, "End date"),

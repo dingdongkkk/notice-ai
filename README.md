@@ -1,20 +1,39 @@
 # Notice → Action
 
-Photograph a public notice (for example a Bengaluru water-cut circular in Kannada or English) and get:
+**Know what a notice means for your household, what changed, and what to do next, with proof.**
 
-- a plain-language explanation in English, Kannada or Hindi, with a read-aloud button,
-- a "does this affect me?" check of your area against the areas in the notice,
-- the facts read from the notice, each with the passage it came from, shown beside the original photo,
-- a calendar reminder and a family summary that are only produced after you confirm the date yourself,
-- a field-by-field comparison when the notice is revised,
-- answers to follow-up questions, drawn only from the facts already read from the notice,
-- a matching public helpline record with its source and retrieval date.
+Photograph a public notice (a Bengaluru water-cut circular or a scholarship notice, in Kannada or English) and the app:
+
+1. **Explains it** in English, Kannada or Hindi, in short sentences, with a read-aloud button.
+2. **Shows where each fact came from.** Every date, area, amount, document and condition has a "Show me where" button that reveals the passage it was read from, next to the photo. Facts are labelled *From your notice*, *External source* or *Needs confirmation*.
+3. **Checks whether it affects your family.** An optional household profile (locality, water provider, student, senior citizen) is compared with the notice. The answer is one of *Matches the stated conditions*, *Doesn't match a stated condition* or *Need more information*, with the reason for each.
+4. **Gets you ready for a visit.** Required documents become a tick list that counts what is still missing; the office named in the notice is shown, and any office from an outside source is marked as a candidate with "confirm before travelling".
+5. **Sets a reminder only after you approve.** You confirm the date against the notice, then download a calendar file. An unreadable date blocks the reminder until you type it in.
+6. **Makes a card for the family.** A large-text card (what happened, when, what to do) that separates the notice's own instructions from suggested precautions, hides personal details by default, and is shared through the phone's share sheet.
+7. **Handles a corrected notice.** Upload the newer version and the app says what changed in plain sentences ("The date moved later by 2 days"), counts the updates your plan needs, and updates the saved reminder instead of adding a second one.
+8. **Answers follow-up questions** from the facts already read from the notice.
 
 Built for Hacktoberfest Hack Day Bengaluru '26 (PS 01, Multimodal Community Intelligence).
 
+## Built for older users and phones
+
+- Large base text with A / A+ / A++ buttons that scale the whole page, remembered on the device.
+- One column, numbered steps, big buttons (52 px minimum), full-width on phones, with a "Take a photo" button that opens the camera.
+- High-contrast colours in light and dark mode. Status is never shown by colour alone.
+- Keyboard and screen-reader support: labelled fields, visible focus, live status messages, and language tags on Kannada and Hindi text.
+
+The interface labels are in English. Only the explanation, checklist and family card are in the chosen language.
+
 ## Model
 
-Notice reading is done by **Gemma 4** (`google/gemma-4-31b-it:free`), an open-weight model, called through OpenRouter from a server route. One request per image extracts the facts and writes the explanation. A follow-up question is a second, text-only request. The checklist, area check, calendar file, family summary and revision comparison are plain code with no AI calls.
+Notice reading is done by **Gemma 4** (`google/gemma-4-31b-it:free`), an open-weight model, called through OpenRouter from a server route. One request per image extracts the facts and writes the explanation. A follow-up question is a second, text-only request. Everything else (household check, checklists, calendar file, family card, revision comparison) is plain code with no AI calls.
+
+## Where your data goes
+
+- The photo, and the facts read from it when you ask a follow-up question, are sent to OpenRouter. The app says so before upload. Nothing is processed on the device.
+- The household profile, text size, language and saved reminders are kept in the browser's local storage and are not sent to the server or the model.
+- The server keeps a result in memory to avoid repeating a request for the same image; it writes nothing to disk.
+- Sharing happens only when you press Share or Copy.
 
 ## Run it
 
@@ -33,7 +52,7 @@ OPENROUTER_API_KEY=your_key_here
 OPENROUTER_MODEL=google/gemma-4-31b-it:free
 ```
 
-"Load synthetic sample (no AI)" shows the interface with a hand-written fixture. It is labelled as a fixture on screen and never passes through the model.
+"Try a sample" loads a hand-written water-cut notice (with a corrected version) or a scholarship notice. Samples are labelled on screen and never pass through the model.
 
 ## How it works
 
@@ -43,23 +62,26 @@ OPENROUTER_MODEL=google/gemma-4-31b-it:free
 | `app/api/ask/route.ts` | Answers a follow-up question from the validated facts only |
 | `lib/openrouter.ts` | The one place that talks to OpenRouter; maps failures to messages |
 | `lib/schema.ts` | Zod validation; malformed dates and times become unresolved instead of being passed on |
-| `lib/prompt.ts` | Extraction prompt; text inside the notice is treated as data, not instructions |
-| `lib/actions.ts` | Calendar (ICS) file with a 12-hour-before alarm, family summary, area match, revision comparison |
-| `lib/data.ts` | Hand-maintained public records and the synthetic fixtures |
+| `lib/prompt.ts` | Prompts; text inside the notice is treated as data, not instructions |
+| `lib/actions.ts` | Household check, calendar file, saved reminders, family card, revision comparison |
+| `lib/data.ts` | Hand-maintained public records and the synthetic samples |
+| `lib/i18n.ts` | Family card labels in three languages |
+| `lib/store.ts` | Browser local storage hook |
 | `app/page.tsx` | The single page |
 
 Key dependencies: Next.js, React, Zod.
 
 ## Limitations
 
-- The photo is sent to a hosted AI service. Do not upload private documents.
-- The model can misread a notice. Supporting passages are the model's own transcription, so check them against the photo. Kannada and Hindi output has not been reviewed by a fluent reader.
-- A missing or unreadable date stays unresolved and blocks the calendar download until you enter and confirm it.
-- The free endpoint is rate limited and can be unavailable.
-- The external record (BWSSB helpline 1916) comes from a Deccan Herald report, not from BWSSB's own site.
-- The area check is a plain text match. Spelling differences and "surrounding areas" are not caught, and the app says so.
+- The model can misread a notice. "Show me where" passages are the model's own transcription, not a highlighted region of the image, so compare them with the photo.
+- Kannada and Hindi output, including the family card labels, has not been reviewed by a fluent reader.
+- The household check is a plain comparison. Area matching misses spelling differences and "surrounding areas"; conditions other than student or senior citizen are reported as "cannot be checked". It never decides eligibility.
+- Personal details are hidden using what the model listed plus long digit runs. Read the card before sharing.
+- External records (BWSSB helpline 1916, head office address) come from third-party pages, not BWSSB's own site, and no opening hours are held.
+- A calendar may or may not treat the re-downloaded file as an update to the earlier event.
 - Read-aloud uses the device's own voices; many devices have no Kannada voice.
-- Only water-interruption style notices have been considered. This is not an official government service and gives no legal advice.
+- The free endpoint is rate limited and can be unavailable.
+- Only water-interruption and scholarship style notices have been considered. This is not an official government service and gives no legal advice.
 
 ## License
 
