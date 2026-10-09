@@ -95,17 +95,26 @@ async function toTiles(file: File): Promise<string[]> {
   });
 }
 
-async function extract(image: string, tiles: string[], language: Language): Promise<Result> {
+async function extract(image: string, tiles: string[], language: Language, sourceImage: string): Promise<Result> {
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image, tiles, language }),
+    body: JSON.stringify({ image, tiles, language, sourceImage }),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body?.notice) {
     throw new Error(body?.error || "Something went wrong. Please try again.");
   }
   return { notice: body.notice, image, source: "live", language, model: body.model };
+}
+
+function originalDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read the photo."));
+    reader.onerror = () => reject(new Error("Could not read the photo."));
+    reader.readAsDataURL(file);
+  });
 }
 
 // Bring the new result into view and move screen-reader focus to it.
@@ -1347,7 +1356,10 @@ export default function Home() {
       const image = await toDataUrl(file);
       setPending({ slot, image });
       const tiles = await toTiles(file);
-      const result = await extract(image, tiles, language);
+      const sourceImage = /^(image\/(jpeg|png|webp))$/i.test(file.type)
+        ? await originalDataUrl(file)
+        : image;
+      const result = await extract(image, tiles, language, sourceImage);
       if (slot === "revised" && thread) setThread({ ...thread, revised: result });
       else setThread({ id: crypto.randomUUID(), original: result, revised: null });
       showResult("result");
@@ -1370,6 +1382,15 @@ export default function Home() {
       revised: null,
     });
     showResult("result");
+  }
+
+  async function tryMessyNotice() {
+    const response = await fetch("/bwssb-notice-sample.png");
+    if (!response.ok) {
+      setError("The sample notice could not be loaded.");
+      return;
+    }
+    onFile(new File([await response.blob()], "bwssb-notice-sample.png", { type: "image/png" }), "original");
   }
 
   const current = thread ? (thread.revised ?? thread.original) : null;
@@ -1505,6 +1526,10 @@ export default function Home() {
                     </div>
                     <div className="samples">
                       <span>{t("Just looking? Try an example")}</span>
+                      <button className="chip-btn" onClick={() => void tryMessyNotice()}>
+                        Try messy notice photo
+                      </button>
+                      <a href="/bwssb-notice-sample.png" target="_blank" rel="noreferrer">View photo</a>
                       <button className="chip-btn" onClick={() => loadFixture(FIXTURE_WATER)}>
                         {t("Water cut")}
                       </button>
